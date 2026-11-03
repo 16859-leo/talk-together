@@ -22,6 +22,8 @@ export default function CreatePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  /** 引导凭证冲突：上一次创建可能已被服务端接受，保留资料以便重试 */
+  const [conflictValues, setConflictValues] = useState<JoinValues | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -74,6 +76,11 @@ export default function CreatePage() {
             Object.fromEntries(caught.fieldErrors.map((item) => [item.path, item.message])),
           )
         }
+        if (caught.code === 'BOOTSTRAP_CONFLICT') {
+          setConflictValues(values)
+          setError('这次创建用的凭证已经用过了，可能房间已经建好')
+          return
+        }
         setError(errorText(caught.code, caught.message))
       } else {
         setError('房间没建成，稍后再试')
@@ -121,6 +128,23 @@ export default function CreatePage() {
         </section>
 
         <section>
+          {conflictValues && (
+            <div className="mb-3 rounded-2xl border-[1.5px] border-[rgba(192,127,80,.45)] bg-[rgba(232,168,124,.16)] px-4 py-3 text-[12.5px] leading-relaxed text-[#8a5a34]">
+              <p>上一次创建可能已经成功，只是一直没收到回执。</p>
+              <button
+                type="button"
+                onClick={() => {
+                  clearBootstrap('create')
+                  setConflictValues(null)
+                  setError(null)
+                  void handleSubmit(conflictValues)
+                }}
+                className="mt-2 rounded-full border border-[rgba(192,127,80,.55)] px-3 py-1 text-[12px] font-semibold text-[#8a5a34]"
+              >
+                放弃旧请求，重新创建
+              </button>
+            </div>
+          )}
           <ProfileForm
             policy={policy ?? FALLBACK_POLICY}
             submitting={submitting}

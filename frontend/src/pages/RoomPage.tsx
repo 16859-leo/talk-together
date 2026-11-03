@@ -36,6 +36,9 @@ const END_TEXT: Record<string, { title: string; detail: string }> = {
   MEMBER_REMOVED: { title: '你被移出了这个房间', detail: '房主结束了你的入场，可以等下一次邀请。' },
   ROOM_UNAVAILABLE: { title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' },
   MEMBERSHIP_INACTIVE: { title: '这次入房已经结束', detail: '从邀请链接重新进来就好。' },
+  MEMBERSHIP_CHANGED: { title: '这次入房已经结束', detail: '你用同一个身份重新进过一次房，刷新页面即可。' },
+  MEMBER_CREDENTIAL_INVALID: { title: '身份凭证失效了', detail: '从邀请链接重新进来，会给你一个新的身份。' },
+  INVITATION_INVALID: { title: '邀请链接无效', detail: '这个链接已经失效了，找房主重新要一个。' },
 }
 
 export default function RoomPage() {
@@ -55,6 +58,8 @@ export default function RoomPage() {
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({})
   const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
+  /** 限频冷却截止时间，交给 Composer 倒计时并禁用发送 */
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
   const pendingSend = useRef<{ id: string; text: string } | null>(null)
   const channelRef = useRef<BroadcastChannel | null>(null)
 
@@ -63,9 +68,25 @@ export default function RoomPage() {
     () => loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null),
   )
 
+  // 切换房间或离开时清空单例状态，别把上一个房间的聊天带过来
   useEffect(() => {
+    dispatch({ type: 'reset' })
     setSession(loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null))
+    setEnded(null)
+    setNotice(null)
+    return () => {
+      dispatch({ type: 'reset' })
+    }
   }, [roomId])
+
+  /** 只有 membership 还在，才谈得上调用房间级接口 */
+  const activeSession =
+    session?.membershipId !== undefined
+      ? ({ credential: session.credential, membershipId: session.membershipId } as {
+          credential: string
+          membershipId: string
+        })
+      : null
 
   // 改资料弹层的校验约束和入房页同源
   useEffect(() => {
@@ -106,7 +127,7 @@ export default function RoomPage() {
       type: 'self-override',
       self: {
         memberId: session.memberId,
-        membershipId: session.membershipId,
+        membershipId: session.membershipId ?? '',
         role: session.role ?? 'member',
         joinedSequence: state.self.joinedSequence,
       },
@@ -178,6 +199,15 @@ export default function RoomPage() {
     }
   }, [roomId, navigate])
 
+  // 本人的 membership 结束（被移出 / 主动退出）同样要切终态
+  useEffect(() => {
+    if (!state.selfEnded) return
+    clearSession(roomId)
+    setEnded(
+      state.selfEnded === 'removed' ? END_TEXT.MEMBER_REMOVED : END_TEXT.MEMBERSHIP_INACTIVE,
+    )
+  }, [state.selfEnded, roomId])
+
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
     if (!state.closed) return
@@ -193,7 +223,10 @@ export default function RoomPage() {
       .then((data) => {
         if (!alive) return
         if (!data.member.membership) {
-          clearSession(roomId)
+          // 成员凭证仍然有效，只是这次入房结束了：保留身份，支持原身份重新加入
+          const endedSession = { ...session, membershipId: undefined }
+          saveSession(roomId, endedSession)
+          setSession(endedSession)
           setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
         }
       })
@@ -212,18 +245,25 @@ export default function RoomPage() {
 
   // 领票 → 建连 → 首帧快照 → 事件流。
   useEffect(() => {
-    if (!session) return undefined
+    if (!activeSession) return undefined
     const controller = new AbortController()
     const close = openRoomStream({
       roomId: roomId || 'room_demo',
-      credential: session.credential,
-      membershipId: session.membershipId,
+      credential: activeSession.credential,
+      membershipId: activeSession.membershipId,
       signal: controller.signal,
       onStatus: (next, detail) => {
         setStatus(next)
         if (next === 'failed' && detail) setNotice(detail)
       },
       onMessage: applyServerMessage,
+      onFatal: (error) => {
+        const text = END_TEXT[error.code]
+        if (text) {
+          clearSession(roomId)
+          setEnded(text)
+        }
+      },
     })
     return () => {
       controller.abort()
@@ -265,8 +305,8 @@ export default function RoomPage() {
   const queuedCount = state.invocations.filter((item) => item.status === 'queued').length
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
-    if (!session) {
-      setNotice('还没加入这个房间')
+    if (!session || !activeSession) {
+      setNotice('这次入房已经结束，重新进房后才能发言')
       return false
     }
     setNotice(null)
@@ -278,7 +318,7 @@ export default function RoomPage() {
       const data = await sendMessage(
         roomId || 'room_demo',
         { clientRequestId, text, mentions },
-        session,
+        activeSession,
       )
       pendingSend.current = null
       // Mock 或后端回执可能带着别人的示例数据：对不上就用本地这条兜底
@@ -313,9 +353,13 @@ export default function RoomPage() {
         return false
       }
 
-      // 网络问题：保留本地输入体验，同时记住这次的 ID 便于重试
+      // 网络问题：记住这次的 ID 便于重试；只有开发态才假装发出去
       if (error.status === 0) {
         pendingSend.current = { id: clientRequestId, text }
+        if (!import.meta.env.DEV) {
+          setNotice('没发出去，检查网络后再试一次')
+          return false
+        }
         if (self && selfMember) {
           const fallback: MemberMessage = {
             id: `local_${Date.now()}`,
@@ -342,25 +386,36 @@ export default function RoomPage() {
         return false
       }
 
-      const wait = error.retryAfterMs
-        ? `（${Math.ceil(error.retryAfterMs / 1000)} 秒后可再试）`
-        : ''
-      setNotice(`${error.message}${wait}`)
+      if (error.retryAfterMs) {
+        setCooldownUntil(Date.now() + error.retryAfterMs)
+        setNotice(`${error.message}（${Math.ceil(error.retryAfterMs / 1000)} 秒后可再试）`)
+        return false
+      }
+      setNotice(error.message)
       return false
     }
   }
 
   async function handleLeave() {
-    setLeaveOpen(false)
     if (session) {
       try {
         // 房主的「退出」等价于关房，走单独接口更明确
-        if (canMention) await closeRoom(roomId || 'room_demo', session)
-        else await leaveRoom(roomId || 'room_demo', session)
-      } catch {
-        /* 退出失败也把本地收干净，避免卡在房间里 */
+        if (!activeSession) return
+        if (canMention) await closeRoom(roomId || 'room_demo', activeSession)
+        else await leaveRoom(roomId || 'room_demo', activeSession)
+      } catch (error) {
+        // 关房/退出没被服务端确认，就别同步这个结果，留给用户重试
+        if (canMention) {
+          setNotice(
+            error instanceof ApiError
+              ? `没关掉：${error.message}，房间还在，稍后再试一次`
+              : '没关掉，房间还在，稍后再试一次',
+          )
+          return
+        }
       }
     }
+    setLeaveOpen(false)
     clearSession(roomId)
     channelRef.current?.postMessage({ type: canMention ? 'closed' : 'left' })
     navigate('/')
@@ -370,7 +425,8 @@ export default function RoomPage() {
     if (!removeTarget || !session) return
     setRemoving(true)
     try {
-      await removeMember(roomId || 'room_demo', removeTarget.id, session)
+      if (!activeSession) return
+      await removeMember(roomId || 'room_demo', removeTarget.id, activeSession)
       if (removeTarget.membership) {
         dispatch({ type: 'member-removed', membershipId: removeTarget.membership.id })
       }
@@ -384,7 +440,7 @@ export default function RoomPage() {
   }
 
   async function handleSaveProfile(values: JoinValues) {
-    if (!session) return
+    if (!session || !activeSession) return
     setProfileBusy(true)
     setProfileError(null)
     setProfileFieldErrors({})
@@ -396,7 +452,7 @@ export default function RoomPage() {
           interestTags: values.interestTags,
           bio: values.bio,
         },
-        session,
+        activeSession,
       )
 
       // 回执对不上（Mock 固定示例）时，用本地这份兜底，别让界面弹回旧资料
@@ -407,7 +463,7 @@ export default function RoomPage() {
         echoed.profile.nickname === values.nickname &&
         echoed.profile.interestTags.join('/') === values.interestTags.join('/')
 
-      const next = sameShape
+      const next = sameShape || !import.meta.env.DEV
         ? echoed
         : {
             ...(mine ?? echoed),
@@ -446,19 +502,60 @@ export default function RoomPage() {
     }
   }
 
+  // 没有凭证又直接打开了房间地址：给一个明确出口，别停在加载页
+  if (!session) {
+    return (
+      <div className="page-bg paper grid min-h-screen place-items-center px-6">
+        <div className="relative z-10 w-full max-w-[440px] rounded-[32px] border-[1.5px] border-rule bg-paper px-8 py-10 text-center shadow-[0_30px_60px_-34px_rgba(92,64,51,.45)]">
+          <h1 className="text-[20px] font-bold text-[#33291d]">还没加入这个房间</h1>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
+            这个地址只对拿到邀请的人开放。从房主发你的邀请链接进来，或者先开一个自己的房间。
+          </p>
+          <div className="mt-6 flex justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-5 py-2.5 text-[13px] text-ink-2"
+            >
+              回到首页
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/create')}
+              className="rounded-2xl bg-sage-deep px-5 py-2.5 text-[13px] font-semibold text-white"
+            >
+              开一个房间
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (ended) {
     return (
       <div className="page-bg paper grid min-h-screen place-items-center px-6">
         <div className="relative z-10 w-full max-w-[440px] rounded-[32px] border-[1.5px] border-rule bg-paper px-8 py-10 text-center shadow-[0_30px_60px_-34px_rgba(92,64,51,.45)]">
           <h1 className="text-[20px] font-bold text-[#33291d]">{ended.title}</h1>
           <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{ended.detail}</p>
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="mt-6 rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
-          >
-            回到首页
-          </button>
+          <div className="mt-6 flex justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
+            >
+              回到首页
+            </button>
+            {!session?.membershipId && (
+              <button
+                type="button"
+                onClick={() => navigate(`/join/${roomId}`)}
+                className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
+              >
+                用原身份重新加入
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -574,7 +671,12 @@ export default function RoomPage() {
             <h2 className="pb-2.5 text-[16px] font-bold">聊天</h2>
             <hr className="rule" />
             <ChatFeed messages={state.messages} />
-            <Composer canMention={canMention} disabled={composerDisabled} onSend={handleSend} />
+            <Composer
+              canMention={canMention}
+              disabled={composerDisabled}
+              cooldownUntil={cooldownUntil}
+              onSend={handleSend}
+            />
             {notice && (
               <p className="mt-1 rounded-lg bg-[rgba(177,105,74,.1)] px-3 py-1.5 text-[11.5px] text-brick">
                 {notice}

@@ -12,6 +12,8 @@ import type {
 export interface RoomState {
   ready: boolean
   closed: boolean
+  /** 本人的 membership 结束方式：被移出 / 主动退出 */
+  selfEnded: 'removed' | 'left' | null
   self: SnapshotData['self'] | null
   room: Room | null
   members: ActiveMember[]
@@ -23,12 +25,19 @@ export interface RoomState {
 export const emptyState: RoomState = {
   ready: false,
   closed: false,
+  selfEnded: null,
   self: null,
   room: null,
   members: [],
   messages: [],
   invocations: [],
   cursor: 0,
+}
+
+/** 占位数始终跟着成员列表走，避免侧栏显示旧数字 */
+function withOccupied(room: Room | null, occupied: number): Room | null {
+  if (!room) return room
+  return room.occupiedSlots === occupied ? room : { ...room, occupiedSlots: occupied }
 }
 
 type Action =
@@ -61,6 +70,7 @@ function reduceEvent(state: RoomState, event: ServerMessage): RoomState {
       return {
         ready: true,
         closed: false,
+        selfEnded: null,
         self: event.data.self,
         room: event.data.room,
         members: event.data.members,
@@ -85,13 +95,15 @@ function reduceEvent(state: RoomState, event: ServerMessage): RoomState {
     case 'member.joined':
     case 'member.updated': {
       const exists = state.members.some((m) => m.id === event.data.member.id)
+      const members = exists
+        ? state.members.map((m) =>
+            m.id === event.data.member.id ? event.data.member : m,
+          )
+        : [...state.members, event.data.member]
       return {
         ...state,
-        members: exists
-          ? state.members.map((m) =>
-              m.id === event.data.member.id ? event.data.member : m,
-            )
-          : [...state.members, event.data.member],
+        members,
+        room: withOccupied(state.room, members.length),
         cursor: Math.max(state.cursor, event.sequence),
       }
     }
@@ -115,23 +127,42 @@ function reduceEvent(state: RoomState, event: ServerMessage): RoomState {
         cursor: Math.max(state.cursor, event.sequence),
       }
     case 'member.left':
-    case 'member.removed':
+    case 'member.removed': {
+      const members = state.members.filter(
+        (m) => m.membership?.id !== event.data.membershipId,
+      )
+      // 本人的 membership 结束就是这次入房结束，不能只删名片
+      const selfEnded =
+        state.self?.membershipId === event.data.membershipId
+          ? event.type === 'member.removed'
+            ? 'removed'
+            : 'left'
+          : state.selfEnded
       return {
         ...state,
-        members: state.members.filter(
-          (m) => m.membership?.id !== event.data.membershipId,
-        ),
+        members,
+        room: withOccupied(state.room, members.length),
+        selfEnded,
         cursor: Math.max(state.cursor, event.sequence),
       }
+    }
     case 'ai.reply.started':
     case 'ai.reply.completed':
     case 'ai.reply.failed':
-    case 'ai.reply.cancelled':
+    case 'ai.reply.cancelled': {
+      const invocation = event.data.invocation
+      const exists = invocation && state.invocations.some((item) => item.id === invocation.id)
       return {
         ...state,
         messages: upsertMessage(state.messages, event.data.reply),
+        invocations: invocation
+          ? exists
+            ? state.invocations.map((item) => (item.id === invocation.id ? invocation : item))
+            : [...state.invocations, invocation]
+          : state.invocations,
         cursor: Math.max(state.cursor, event.sequence),
       }
+    }
     case 'ai.reply.delta': {
       const index = state.messages.findIndex(
         (m) => m.kind === 'ai' && m.id === event.data.replyId,
@@ -186,6 +217,7 @@ function reducer(state: RoomState, action: Action): RoomState {
       return {
         ready: true,
         closed: false,
+        selfEnded: null,
         self: action.data.self,
         room: action.data.room,
         members: action.data.members,
@@ -196,10 +228,10 @@ function reducer(state: RoomState, action: Action): RoomState {
     case 'event':
       return reduceEvent(state, action.event)
     case 'local-message':
+      // 本地即时反馈：只归并消息，游标必须由快照和已处理的 WS 事件推进
       return {
         ...state,
         messages: upsertMessage(state.messages, action.message),
-        cursor: Math.max(state.cursor, action.message.createdSequence),
       }
     case 'member-updated':
       return {
@@ -209,18 +241,24 @@ function reducer(state: RoomState, action: Action): RoomState {
         ),
       }
     case 'member-added':
-      return state.members.some((member) => member.id === action.member.id)
-        ? state
-        : { ...state, members: [...state.members, action.member] }
-    case 'self-override':
-      return { ...state, self: action.self }
-    case 'member-removed':
+      if (state.members.some((member) => member.id === action.member.id)) return state
       return {
         ...state,
-        members: state.members.filter(
-          (member) => member.membership?.id !== action.membershipId,
-        ),
+        members: [...state.members, action.member],
+        room: withOccupied(state.room, state.members.length + 1),
       }
+    case 'self-override':
+      return { ...state, self: action.self }
+    case 'member-removed': {
+      const members = state.members.filter(
+        (member) => member.membership?.id !== action.membershipId,
+      )
+      return {
+        ...state,
+        members,
+        room: withOccupied(state.room, members.length),
+      }
+    }
     case 'reset':
       return emptyState
     default:

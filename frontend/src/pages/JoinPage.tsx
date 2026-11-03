@@ -6,7 +6,14 @@ import { errorText } from '../shared/api/errors'
 import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { DEMO_INVITE_PATH } from '../state/demo'
-import { clearBootstrap, clearSession, loadBootstrap, loadSession, saveSession } from '../state/session'
+import {
+  clearBootstrap,
+  clearSession,
+  loadBootstrap,
+  loadSession,
+  saveSession,
+  type RoomSession,
+} from '../state/session'
 
 const FALLBACK_POLICY: ValidationPolicy = {
   nickname: { minLength: 1, maxLength: null },
@@ -26,6 +33,8 @@ export default function JoinPage() {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [existing, setExisting] = useState(false)
+  /** 成员凭证还在、但这次入房已经结束：可以原身份重新加入 */
+  const [staleSession, setStaleSession] = useState<RoomSession | null>(null)
 
   const inviteCode = search.get('inviteCode') ?? ''
   const codeMissing = inviteCode.length === 0
@@ -38,7 +47,9 @@ export default function JoinPage() {
     getClientConfig().then((config) => {
       if (alive) setPolicy(config.validation)
     })
-    setExisting(Boolean(loadSession(roomId)))
+    const saved = loadSession(roomId)
+    setExisting(Boolean(saved?.membershipId))
+    setStaleSession(saved && !saved.membershipId ? saved : null)
     return () => {
       alive = false
     }
@@ -49,18 +60,26 @@ export default function JoinPage() {
     setError(null)
     setFieldErrors({})
 
+    // 别的标签页可能已经先加入了：复用那个身份，别再匿名开一个；
+    // 如果只是 membership 结束但凭证还在，就用原身份重新加入
+    const saved = loadSession(roomId)
+    if (saved?.membershipId) {
+      navigate(`/rooms/${roomId}`, { replace: true })
+      return
+    }
+
     const bootstrap = loadBootstrap(roomId)
     try {
       const data = await joinRoom(roomId, {
-        clientRequestId: bootstrap.clientRequestId,
-        bootstrapToken: bootstrap.token,
+        clientRequestId: saved ? crypto.randomUUID() : bootstrap.clientRequestId,
+        bootstrapToken: saved ? undefined : bootstrap.token,
         inviteCode,
         profile: {
           nickname: values.nickname,
           interestTags: values.interestTags,
           bio: values.bio,
         },
-      })
+      }, saved ? { credential: saved.credential } : undefined)
 
       const membership = data.member.membership
       if (!membership) {
@@ -148,7 +167,42 @@ export default function JoinPage() {
         </section>
 
         <section>
-          {existing ? (
+          {staleSession && !linkBroken ? (
+            <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
+              <h2 className="text-[17px] font-bold text-[#33291d]">这次入房已经结束</h2>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                你的身份还在（{staleSession.nickname ?? '原来的你'}），可以用它重新占一个座位。
+              </p>
+              <div className="mt-5 flex justify-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() =>
+                    void handleSubmit({
+                      nickname: staleSession.nickname ?? '我',
+                      interestTags: staleSession.interestTags ?? ['随便聊聊'],
+                      bio: '',
+                    })
+                  }
+                  className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
+                >
+                  {submitting ? '正在重新加入…' : '用原身份重新加入'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSession(roomId)
+                    clearBootstrap(roomId)
+                    setStaleSession(null)
+                    setExisting(false)
+                  }}
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
+                >
+                  换个身份
+                </button>
+              </div>
+            </div>
+          ) : existing ? (
             <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
               <h2 className="text-[17px] font-bold text-[#33291d]">你已经在这个房间里了</h2>
               <p className="mt-1.5 text-[12.5px] text-muted">刷新或换标签页都不会变成新成员。</p>

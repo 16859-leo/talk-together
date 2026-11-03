@@ -76,7 +76,7 @@ src/
 
 ## 测试
 
-`npm test` 会把 `contracts/examples/ws/` 的 12 个场景逐帧喂给 `applyServerMessage`，断言：
+`npm test` 共 24 条：12 个 WS 场景逐帧回放，外加 12 条归并 / 错误码 / 评审边界的用例。场景回放断言：
 
 - 首帧必为快照，`self` 与 `viewer` 一致；
 - 终态回复的状态与完整文本；

@@ -41,6 +41,22 @@ export function ProfileForm({
   const tagsTooFew = tags.length < (policy.interestTags.minItems ?? 1)
   const invalid = nicknameTooShort || tagsTooFew
 
+  const pickError = (...paths: string[]): string | undefined => {
+    for (const path of paths) {
+      if (fieldErrors[path]) return fieldErrors[path]
+    }
+    for (const [path, message] of Object.entries(fieldErrors)) {
+      if (paths.some((candidate) => path.startsWith(`${candidate}/`))) return message
+    }
+    return undefined
+  }
+
+  const nicknameError = pickError('/profile/nickname', '/nickname')
+  const tagsError = pickError('/profile/interestTags', '/interestTags')
+  const bioError = pickError('/profile/bio', '/bio')
+  const nicknameMessage = nicknameError ?? '起个名字才能进去'
+  const tagsMessage = tagsError ?? '至少填一个兴趣，自己写的也行'
+
   /**
    * 标签完全自由：可以点常用词，也可以自己打。
    * 支持一次粘贴/输入多个（逗号、顿号、空格分隔），并按契约的上限截断。
@@ -93,10 +109,8 @@ export function ProfileForm({
             touched && nicknameTooShort ? 'border-[rgba(163,71,31,.55)]' : 'border-rule'
           }`}
         />
-        {touched && nicknameTooShort && (
-          <p className="mt-1 text-[11.5px] text-brick">
-            {fieldErrors['/profile/nickname'] ?? '起个名字才能进去'}
-          </p>
+        {(nicknameError || (touched && nicknameTooShort)) && (
+          <p className="mt-1 text-[11.5px] text-brick">{nicknameMessage}</p>
         )}
       </div>
 
@@ -170,10 +184,8 @@ export function ProfileForm({
             </button>
           ))}
         </div>
-        {touched && tagsTooFew && (
-          <p className="mt-1 text-[11.5px] text-brick">
-            {fieldErrors['/profile/interestTags'] ?? '至少填一个兴趣，自己写的也行'}
-          </p>
+        {(tagsError || (touched && tagsTooFew)) && (
+          <p className="mt-1 text-[11.5px] text-brick">{tagsMessage}</p>
         )}
       </div>
 
@@ -191,6 +203,7 @@ export function ProfileForm({
           placeholder="比如：最近在读科幻，周末喜欢做饭——写不写都行，空着也没关系。"
           className="h-[76px] w-full resize-none rounded-[14px] border-[1.5px] border-rule bg-card px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink-2 outline-none transition-shadow placeholder:text-faint focus:border-[rgba(96,166,150,.7)] focus:shadow-[0_0_0_4px_rgba(124,185,168,.14)]"
         />
+        {bioError && <p className="mt-1 text-[11.5px] text-brick">{bioError}</p>}
       </div>
 
       {serverError && (

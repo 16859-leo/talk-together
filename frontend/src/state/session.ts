@@ -1,6 +1,7 @@
 export interface RoomSession {
   credential: string
-  membershipId: string
+  /** 为空表示这次入房已结束，但成员凭证仍然有效，可以原身份重新加入 */
+  membershipId?: string
   memberId: string
   /** 本地先记住资料，快照没带上自己时也能先把「我」画出来 */
   nickname?: string

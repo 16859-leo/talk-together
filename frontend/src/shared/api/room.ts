@@ -50,14 +50,24 @@ export interface ProfileInput {
 
 export interface JoinBody {
   clientRequestId: string
-  bootstrapToken: string
+  /** 首次入房必需；用原身份重新加入时不需要 */
+  bootstrapToken?: string
   inviteCode?: string
   profile: ProfileInput
 }
 
 /** 首次加入。已在房间里再次调用会复用原 membership（200）。 */
-export async function joinRoom(roomId: string, body: JoinBody): Promise<RoomEntryData> {
-  return request<RoomEntryData>(`/rooms/${roomId}/members`, { method: 'POST', body })
+export async function joinRoom(
+  roomId: string,
+  body: JoinBody,
+  auth?: { credential: string; membershipId?: string },
+): Promise<RoomEntryData> {
+  return request<RoomEntryData>(`/rooms/${roomId}/members`, {
+    method: 'POST',
+    body,
+    credential: auth?.credential,
+    membershipId: auth?.membershipId,
+  })
 }
 
 export interface CreateRoomBody {

@@ -1,41 +1,54 @@
 import { useEffect, useRef, useState } from 'react'
+import { formatLeft, useNow } from '../../shared/ui/useNow'
 
 interface ComposerProps {
   canMention: boolean
   disabled?: boolean
+  /** 服务端限频给出的冷却截止时间 */
+  cooldownUntil?: number | null
   onSend: (text: string, mentions: 'ai'[]) => Promise<boolean>
 }
 
-export function Composer({ canMention, disabled, onSend }: ComposerProps) {
+export function Composer({ canMention, disabled, cooldownUntil, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const [showMention, setShowMention] = useState(false)
   const [sending, setSending] = useState(false)
+  /** 只有显式从提及菜单里选了 AI 才算结构化提及，正文里出现 @AI 不算 */
+  const [mentionPicked, setMentionPicked] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const now = useNow(1000)
+
+  const cooling = cooldownUntil !== null && cooldownUntil !== undefined && cooldownUntil > now
+  const cooldownLeft = cooling ? formatLeft(new Date(cooldownUntil).toISOString(), now) : null
 
   useEffect(() => {
-    setShowMention(canMention && value.endsWith('@'))
-  }, [value, canMention])
+    setShowMention(canMention && !mentionPicked && value.endsWith('@'))
+  }, [value, canMention, mentionPicked])
 
   async function submit() {
     const text = value.trim()
-    if (!text || disabled || sending) return
+    if (!text || disabled || sending || cooling) return
     setSending(true)
     setValue('')
     setShowMention(false)
-    const ok = await onSend(text, canMention && /@AI/i.test(text) ? ['ai'] : [])
+    const ok = await onSend(text, canMention && mentionPicked ? ['ai'] : [])
     setSending(false)
+    setMentionPicked(false)
     if (!ok) {
-      // 发送失败时把文字还给用户，别让人白打一遍
-      setValue(text)
+      // 失败时只补回原文；如果用户已经在写下一句，就别覆盖他的草稿
+      setValue((current) => (current.trim().length === 0 ? text : current))
       inputRef.current?.focus()
     }
   }
 
   function pickMention() {
     setValue((prev) => prev.replace(/@$/, '@AI '))
+    setMentionPicked(true)
     setShowMention(false)
     inputRef.current?.focus()
   }
+
+  const sendDisabled = disabled || sending || cooling || value.trim().length === 0
 
   return (
     <div className="relative shrink-0 pt-3">
@@ -54,24 +67,32 @@ export function Composer({ canMention, disabled, onSend }: ComposerProps) {
         <input
           ref={inputRef}
           value={value}
-          disabled={disabled}
+          disabled={disabled || cooling}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
+            // 中文输入法选词时的回车不算发送
+            if (event.nativeEvent.isComposing) return
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
               void submit()
             }
           }}
-          placeholder={canMention ? '说点什么，输入 @ 可以让导播接一句' : '说点什么'}
+          placeholder={
+            cooling && cooldownLeft !== null
+              ? `发得太快了，${cooldownLeft} 秒后再发`
+              : canMention
+                ? '说点什么，输入 @ 可以让导播接一句'
+                : '说点什么'
+          }
           className="min-w-0 flex-1 bg-transparent py-1.5 text-[14px] text-ink-2 outline-none placeholder:text-faint disabled:opacity-60"
         />
         <button
           type="button"
           onClick={() => void submit()}
-          disabled={disabled || sending || value.trim().length === 0}
+          disabled={sendDisabled}
           className="rounded-[12px] bg-sage-deep px-5 py-2 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-[#549c8b] disabled:opacity-50"
         >
-          {sending ? '发送中…' : '发送'}
+          {sending ? '发送中…' : cooling && cooldownLeft !== null ? `${cooldownLeft}s` : '发送'}
         </button>
       </div>
     </div>

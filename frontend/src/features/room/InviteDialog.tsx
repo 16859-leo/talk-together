@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 
 interface InviteDialogProps {
   open: boolean
@@ -6,46 +7,64 @@ interface InviteDialogProps {
   onClose: () => void
 }
 
-/** 二维码先用一个确定性的占位图，接入后换成真实 joinPath 生成的码。 */
-function QrPlaceholder() {
-  const size = 25
-  const cell = 6
-  const seedRef = { value: 20261103 }
-  const rnd = () => {
-    seedRef.value = (seedRef.value * 1103515245 + 12345) & 0x7fffffff
-    return seedRef.value / 0x7fffffff
-  }
-  const cells: string[] = []
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      const inFinder = (x < 8 && y < 8) || (x > size - 9 && y < 8) || (x < 8 && y > size - 9)
-      if (!inFinder && rnd() > 0.52) {
-        cells.push(`M${x * cell} ${y * cell}h${cell}v${cell}h-${cell}z`)
-      }
+/** 用真实的邀请地址生成二维码，和「复制链接」用的是同一个 url。 */
+function QrCode({ value }: { value: string }) {
+  const [svg, setSvg] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    QRCode.toString(value, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+      .then((markup) => {
+        if (alive) setSvg(markup)
+      })
+      .catch(() => {
+        if (alive) setSvg(null)
+      })
+    return () => {
+      alive = false
     }
+  }, [value])
+
+  if (!svg) {
+    return <div className="grid h-full w-full place-items-center text-[11px] text-faint">二维码生成中…</div>
   }
-  const finder = (fx: number, fy: number) =>
-    `M${fx * cell} ${fy * cell}h${7 * cell}v${7 * cell}h-${7 * cell}z` +
-    `M${(fx + 1) * cell} ${(fy + 1) * cell}h${5 * cell}v${5 * cell}h-${5 * cell}z`
 
   return (
-    <svg viewBox={`0 0 ${size * cell} ${size * cell}`} className="h-full w-full" shapeRendering="crispEdges">
-      <rect width={size * cell} height={size * cell} fill="#fffdf7" />
-      <path d={cells.join('')} fill="#3a3226" />
-      <path d={finder(0, 0) + finder(size - 7, 0) + finder(0, size - 7)} fill="#3a3226" fillRule="evenodd" />
-    </svg>
+    <div
+      className="h-full w-full [&>svg]:h-full [&>svg]:w-full"
+      // 内容来自本端的 qrcode 序列化结果，不含用户输入以外的标记
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   )
 }
 
 export function InviteDialog({ open, joinPath, onClose }: InviteDialogProps) {
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const url = `${window.location.origin}${joinPath}`
 
   useEffect(() => {
-    if (!open) setCopied(false)
+    if (!open) {
+      setCopied(false)
+      setCopyFailed(false)
+    }
   }, [open])
 
   if (!open) return null
+
+  async function copy() {
+    setCopyFailed(false)
+    try {
+      // 非安全来源没有 clipboard API，直接走失败分支提示手动复制
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setCopied(false)
+      setCopyFailed(true)
+    }
+  }
 
   return (
     <div
@@ -59,11 +78,21 @@ export function InviteDialog({ open, joinPath, onClose }: InviteDialogProps) {
         <h3 className="text-[17px] font-bold text-[#33291d]">邀请朋友进来</h3>
         <p className="mt-1 text-[12.5px] text-muted">扫一下，或者把链接发给他</p>
         <div className="mx-auto my-4 h-[190px] w-[190px] rounded-[18px] border border-rule bg-card p-2.5">
-          <QrPlaceholder />
+          <QrCode value={url} />
         </div>
         <div className="flex items-center gap-2 overflow-hidden rounded-xl border border-rule bg-[#f2ead8] px-2.5 py-2 font-mono text-[11px] text-muted">
-          <span className="flex-1 truncate text-left">{url}</span>
+          <input
+            readOnly
+            value={url}
+            onFocus={(event) => event.currentTarget.select()}
+            className="min-w-0 flex-1 bg-transparent text-left outline-none"
+          />
         </div>
+        {copyFailed && (
+          <p className="mt-2 text-[11.5px] text-brick">
+            这个环境不让写剪贴板，选中上面的链接手动复制吧
+          </p>
+        )}
         <div className="mt-4 flex gap-2.5">
           <button
             type="button"
@@ -74,15 +103,7 @@ export function InviteDialog({ open, joinPath, onClose }: InviteDialogProps) {
           </button>
           <button
             type="button"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(url)
-              } catch {
-                /* 剪贴板不可用时保持静默，链接仍然可见可复制 */
-              }
-              setCopied(true)
-              window.setTimeout(() => setCopied(false), 1600)
-            }}
+            onClick={() => void copy()}
             className="flex-1 rounded-2xl bg-sage-deep py-2.5 text-[13px] font-semibold text-white"
           >
             {copied ? '已复制' : '复制链接'}

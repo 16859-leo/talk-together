@@ -122,6 +122,80 @@ describe('房主本地操作', () => {
   })
 })
 
+describe('评审提出的归并边界', () => {
+  const scenario = load('host-stream.json')
+  const snapshot = scenario.frames[0].message
+
+  function seed() {
+    dispatch({ type: 'reset' })
+    if (snapshot.type !== 'room.snapshot') throw new Error('fixture 首帧不是快照')
+    applyServerMessage(snapshot)
+  }
+
+  it('本地消息不推进游标', () => {
+    seed()
+    const before = getRoomState()
+    dispatch({
+      type: 'local-message',
+      message: {
+        id: 'local_1',
+        kind: 'member',
+        author: { memberId: before.self?.memberId ?? 'me', nickname: '我' },
+        text: '本地这条',
+        clientRequestId: 'client_1',
+        createdAt: new Date().toISOString(),
+        createdSequence: before.cursor + 50,
+      },
+    })
+    const after = getRoomState()
+    expect(after.cursor).toBe(before.cursor)
+    expect(after.messages.some((m) => m.id === 'local_1')).toBe(true)
+  })
+
+  it('本人被移出时标记 selfEnded', () => {
+    seed()
+    const self = getRoomState().self
+    if (!self) throw new Error('fixture 没有 self')
+    applyServerMessage({
+      type: 'member.removed',
+      sequence: getRoomState().cursor + 1,
+      data: { membershipId: self.membershipId, memberId: self.memberId },
+    } as ServerMessage)
+    expect(getRoomState().selfEnded).toBe('removed')
+  })
+
+  it('成员变化时占位数跟着列表走', () => {
+    seed()
+    const before = getRoomState()
+    const member = before.members[0]
+    applyServerMessage({
+      type: 'member.joined',
+      sequence: before.cursor + 1,
+      data: { member: { ...member, id: 'member_new', membership: member.membership } },
+    } as ServerMessage)
+    const after = getRoomState()
+    expect(after.room?.occupiedSlots).toBe(after.members.length)
+  })
+
+  it('回复事件会同步归并 invocation', () => {
+    seed()
+    const frames = scenario.frames.map((frame) => frame.message)
+    const completed = frames.find(
+      (message) =>
+        message.type === 'ai.reply.completed' && Boolean(message.data.invocation),
+    )
+    if (!completed || completed.type !== 'ai.reply.completed') {
+      throw new Error('fixture 里没有带 invocation 的 completed')
+    }
+    const invocation = completed.data.invocation
+    if (!invocation) throw new Error('缺少 invocation')
+
+    applyServerMessage(completed)
+    const stored = getRoomState().invocations.find((item) => item.id === invocation.id)
+    expect(stored?.status).toBe(invocation.status)
+  })
+})
+
 describe('状态归并细节', () => {
   const scenario = load('host-stream.json')
   const snapshot = scenario.frames[0].message
