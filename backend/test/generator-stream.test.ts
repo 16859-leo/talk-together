@@ -7,6 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { APICallError, RetryError } from 'ai';
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 
 import { DeepSeekTextGenerator } from '../src/infrastructure/model/deepseek-generator.ts';
@@ -420,21 +421,39 @@ test('P2 并行检索：同一步里的多个工具调用共享同一次选题',
   );
 });
 
-test('P2 草稿补发：先出文本后调工具、零文本收尾时仍交付草稿', async () => {
+test('P2 检索后无正文：先写正文再检索、零文本收尾判未完成', async () => {
   const source = new KeywordSource();
-  const text = '你们周末一般都怎么过呀？是出门走走还是在家待着，';
+  const musicText = '你们最近都在听什么歌呀？我最近一直在循环一张现场专辑，特别好听';
   const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
     modelOverride: mockModelStages([
       // 同一步：先把话术写完，再调检索工具
       [
         { type: 'text-start', id: '1' },
-        { type: 'text-delta', id: '1', delta: text },
+        { type: 'text-delta', id: '1', delta: musicText },
         { type: 'text-end', id: '1' },
         ...toolCallParts('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
         finishChunk('tool-calls'),
       ],
-      // 下一步零文本结束：不会再进入文本循环里的草稿 yield
+      // 下一步零文本结束：检索之后没有任何话术
       [finishChunk('stop')],
+    ]),
+    maxRetries: 0,
+  });
+
+  await assert.rejects(
+    () => collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '检索前写的话术不能用于满足选题成功条件',
+  );
+});
+
+test('P2 选题正常：检索之后产出话术，草稿与正文都交付', async () => {
+  const source = new KeywordSource();
+  const text = '你们周末怎么过？';
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages([
+      toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks([text], 'stop'),
     ]),
     maxRetries: 0,
   });
@@ -443,7 +462,7 @@ test('P2 草稿补发：先出文本后调工具、零文本收尾时仍交付�
     gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null })),
   );
   const draft = chunks.find((c) => c.kind === 'topic');
-  assert.ok(draft !== undefined && draft.kind === 'topic', '零文本收尾也必须交付草稿');
+  assert.ok(draft !== undefined && draft.kind === 'topic', '选题必须产出草稿');
   assert.equal(draft.topic.title, '旅行中遇到过什么难忘的经历？');
 
   const whole = chunks
@@ -500,4 +519,65 @@ test('P2 围栏+未闭合标记：补全后照常交付正文，不抛错也不�
 
   assert.equal(text, '你们周末都怎么过呀？');
   assert.ok(!text.includes('【'), '未闭合标记不得泄露');
+});
+
+// ---------- 第四轮 review：错误分类 / 提前拦截 / 检索后正文 ----------
+
+test('P2 质量闸门：转录式正文超过前导窗口也不得先交付', async () => {
+  // 超过 30 字才会流式输出，这里正好落在「旧实现会先广播」的区间
+  const transcript = '小林：我最近在学吉他，每天练半小时，周末还会去上课，已经坚持两个月了。';
+  const gen = makeGen(mockModel(textChunks([transcript])));
+
+  const it = gen.generate(makeRequest())[Symbol.asyncIterator]();
+  const delivered: GenerationChunk[] = [];
+  await assert.rejects(
+    async () => {
+      while (true) {
+        const r = await it.next();
+        if (r.done === true) break;
+        delivered.push(r.value);
+      }
+    },
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '转录式复述必须被质量闸门拦下',
+  );
+
+  const textParts = delivered.filter((c) => c.kind === 'text');
+  assert.equal(textParts.length, 0, '不合格正文不得先交付给应用层');
+});
+
+test('P2 错误分类：SDK 重试耗尽后的 RetryError 要按真实状态码映射', async () => {
+  const cases: readonly { readonly status: number; readonly code: string }[] = [
+    { status: 429, code: 'AI_RATE_LIMITED' },
+    { status: 503, code: 'AI_UNAVAILABLE' },
+  ];
+
+  for (const item of cases) {
+    const apiError = new APICallError({
+      message: `provider returned ${item.status}`,
+      url: 'https://api.deepseek.com/chat/completions',
+      requestBodyValues: {},
+      statusCode: item.status,
+      responseHeaders: {},
+      responseBody: '{}',
+      isRetryable: true,
+    });
+    const retryError = new RetryError({
+      message: 'failed after 2 retries',
+      reason: 'maxRetriesExceeded',
+      errors: [apiError],
+    });
+
+    const model = new MockLanguageModelV4({
+      doStream: async () => {
+        throw retryError;
+      },
+    });
+
+    await assert.rejects(
+      () => collect(makeGen(model).generate(makeRequest())),
+      (e: unknown) => e instanceof CapabilityError && e.code === item.code,
+      `HTTP ${item.status} 应映射为 ${item.code}`,
+    );
+  }
 });

@@ -17,7 +17,7 @@
  *   收尾时断言「累计产出 == 最终清洗结果」，不一致直接抛错，绝不交付被截断的句子。
  */
 
-import { streamText, stepCountIs, tool, type ToolSet, type LanguageModel } from 'ai';
+import { streamText, stepCountIs, tool, RetryError, type ToolSet, type LanguageModel } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
 
@@ -51,6 +51,11 @@ interface SelectionState {
   selected: TopicCandidate | null;
   /** 进行中的选题检索；并行工具调用复用同一次请求，避免各自 adopt 出不同话题。 */
   pending: Promise<ToolPayload> | null;
+  /**
+   * 选定话题那一刻已产出的原始文本长度。收尾时用它判断「检索之后是否还有正文」：
+   * 若话术全部产生于检索结果之前，topic 调用不能算成功（草稿与发言会不一致）。
+   */
+  selectedAtLength: number | null;
 }
 
 /** 工具返回给模型的载荷：一条已选定话题，或空结果提示。 */
@@ -82,9 +87,12 @@ export class DeepSeekTextGenerator implements TextGenerator {
   async *generate(request: GenerationRequest): AsyncIterable<GenerationChunk> {
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
       // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
-      const state: SelectionState = { selected: null, pending: null };
+      const state: SelectionState = { selected: null, pending: null, selectedAtLength: null };
       const seenCalls = new Set<string>();
-      const tools = this.#buildTools(request, state, seenCalls);
+      // raw：模型原始输出（清洗的输入）。工具在选定话题时记录当时的长度，
+      // 用于判断「检索之后是否还有正文」，故先声明、再构造工具。
+      let raw = '';
+      const tools = this.#buildTools(request, state, seenCalls, () => raw);
 
       // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
       // invitation 不需要工具：目标已由应用层选定，只生成话术。
@@ -106,9 +114,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
         },
       });
 
-      // raw：模型原始输出；emitted：已交付给应用层的清洗结果。
-      // 前者是清洗的输入，后者是判定「还能追加多少」的游标。
-      let raw = '';
+      // emitted：已交付给应用层的清洗结果，是判定「还能追加多少」的游标。
       let emitted = '';
       let topicSent = false;
       let headSettled = false;
@@ -137,6 +143,12 @@ export class DeepSeekTextGenerator implements TextGenerator {
           if (!analysis.text.startsWith(emitted)) {
             throw new CapabilityError('AI_PROVIDER_ERROR', '文本增量与清洗结果不一致');
           }
+          // 质量闸门里「转录式复述」「复述成员原话」一旦成立就不会再变：
+          // 失败回复会原样保留已广播的文字，所以必须在这里拦住，不能先发再判。
+          const earlyReject = rejectOutput(analysis.text, request.recentMessages);
+          if (earlyReject === 'LOOKS_LIKE_TRANSCRIPT' || earlyReject === 'ECHOES_USER_MESSAGE') {
+            continue;
+          }
           throwIfCancelled(request.signal);
           yield { kind: 'text', delta: analysis.text.slice(emitted.length, target) };
           emitted = analysis.text.slice(0, target);
@@ -154,8 +166,13 @@ export class DeepSeekTextGenerator implements TextGenerator {
       const finalText = cleanOutput(raw);
       const rejected =
         finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
-      // 选题成功必须有草稿：模型不调工具直接作答时 selected 为空，视为未完成，触发重试。
-      const topicMissing = request.purpose === 'topic' && state.selected === null;
+      // 选题成功必须有草稿，且话术要产生于检索结果之后：
+      // 「先写正文 → 再检索 → 零文本结束」的路径下，正文与草稿必然不一致，不能算成功。
+      const topicMissing =
+        request.purpose === 'topic' &&
+        (state.selected === null ||
+          state.selectedAtLength === null ||
+          raw.slice(state.selectedAtLength).trim().length === 0);
 
       if (rejected === null && !topicMissing) {
         // 草稿补发：模型可能先写完话术、随后才调检索工具，再以零文本结束。
@@ -197,6 +214,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
     request: GenerationRequest,
     state: SelectionState,
     seenCalls: Set<string>,
+    readRaw: () => string,
   ): ToolSet {
     const shared = commonInterestTags(request.members);
     const allTags = [...new Set(request.members.flatMap((m) => m.interestTags))];
@@ -216,6 +234,8 @@ export class DeepSeekTextGenerator implements TextGenerator {
         return { topic: null, hint: '没有找到合适的话题，请换个关键词或改用热榜' };
       }
       state.selected = top;
+      // 记下此刻的正文长度：收尾时用它判断检索之后是否还有话术。
+      if (state.selectedAtLength === null) state.selectedAtLength = readRaw().length;
       return { topic: { title: top.title, content: top.content }, hint: '请直接用这条话题向房间提问' };
     };
 
@@ -316,25 +336,32 @@ function toCapabilityError(error: unknown, signal: AbortSignal): CapabilityError
 
   if (signal.aborted) return new CapabilityError('AI_CANCELLED', '调用已取消', { cause: error });
 
-  const name = error instanceof Error ? error.name : '';
-  if (name === 'AbortError') {
-    return new CapabilityError('AI_CANCELLED', '调用已取消', { cause: error });
-  }
-  if (name === 'TimeoutError') {
-    return new CapabilityError('AI_TIMEOUT', '模型调用超时', { cause: error });
+  // SDK 在重试耗尽后抛的是 RetryError，真正的 HTTP 状态在 lastError 里。
+  // 不解包会把 429 当成 AI_PROVIDER_ERROR（丢掉 retryAfterMs），503 也归错类。
+  let source: unknown = error;
+  for (let depth = 0; depth < 3 && RetryError.isInstance(source); depth += 1) {
+    source = source.lastError;
   }
 
-  const status = (error as { statusCode?: number; status?: number }).statusCode
-    ?? (error as { status?: number }).status;
+  const name = source instanceof Error ? source.name : '';
+  if (name === 'AbortError') {
+    return new CapabilityError('AI_CANCELLED', '调用已取消', { cause: source });
+  }
+  if (name === 'TimeoutError') {
+    return new CapabilityError('AI_TIMEOUT', '模型调用超时', { cause: source });
+  }
+
+  const status = (source as { statusCode?: number; status?: number }).statusCode
+    ?? (source as { status?: number }).status;
   if (status === 429) {
     return new CapabilityError('AI_RATE_LIMITED', '模型调用频率受限', {
       retryAfterMs: 20_000,
-      cause: error,
+      cause: source,
     });
   }
   if (status !== undefined && status >= 500) {
-    return new CapabilityError('AI_UNAVAILABLE', '模型服务不可用', { cause: error });
+    return new CapabilityError('AI_UNAVAILABLE', '模型服务不可用', { cause: source });
   }
 
-  return new CapabilityError('AI_PROVIDER_ERROR', '模型调用失败', { cause: error });
+  return new CapabilityError('AI_PROVIDER_ERROR', '模型调用失败', { cause: source });
 }
