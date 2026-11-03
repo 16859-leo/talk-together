@@ -13,6 +13,17 @@ function timeLabel(iso: string): string {
 }
 
 export function ChatFeed({ messages }: ChatFeedProps) {
+  if (messages.length === 0) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1.5 text-center">
+        <p className="text-[13.5px] text-muted">还没有人开口</p>
+        <p className="text-[12px] text-faint">
+          先说一句「大家好」，或者让房主叫导播起个话题。
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-end gap-2.5 overflow-y-auto pb-1 no-scrollbar">
       {messages.map((message) => {
