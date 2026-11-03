@@ -7,10 +7,14 @@ import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { DEMO_INVITE_PATH } from '../state/demo'
 import {
+  JoinLockTimeout,
   clearBootstrap,
+  clearPendingJoin,
   clearSession,
   loadBootstrap,
+  loadPendingJoin,
   loadSession,
+  savePendingJoin,
   saveSession,
   withJoinLock,
   type RoomSession,
@@ -36,6 +40,9 @@ export default function JoinPage() {
   const [existing, setExisting] = useState(false)
   /** 成员凭证还在、但这次入房已经结束：可以原身份重新加入 */
   const [staleSession, setStaleSession] = useState<RoomSession | null>(null)
+  /** 上一次入房可能已被服务端受理：允许显式放弃 */
+  const [conflict, setConflict] = useState(false)
+  const [lastValues, setLastValues] = useState<JoinValues | null>(null)
 
   const inviteCode = search.get('inviteCode') ?? ''
   const codeMissing = inviteCode.length === 0
@@ -60,6 +67,8 @@ export default function JoinPage() {
     setSubmitting(true)
     setError(null)
     setFieldErrors({})
+    setConflict(false)
+    setLastValues(values)
 
     try {
       // 同一房间的入房提交跨标签页串行：后提交的标签页在锁内会看到前一个的结果
@@ -71,23 +80,31 @@ export default function JoinPage() {
           return
         }
 
-        const bootstrap = loadBootstrap(roomId)
+        // 上一次请求如果没拿到回执，正文原样复用同一份，服务端幂等会返回同一个结果
+        const pending = loadPendingJoin(roomId)
+        const body =
+          pending ?? {
+            clientRequestId: saved ? crypto.randomUUID() : loadBootstrap(roomId).clientRequestId,
+            bootstrapToken: saved ? undefined : loadBootstrap(roomId).token,
+            inviteCode,
+            profile: {
+              nickname: values.nickname,
+              interestTags: values.interestTags,
+              bio: values.bio,
+            },
+          }
+        if (!pending) {
+          savePendingJoin(roomId, {
+            clientRequestId: body.clientRequestId,
+            bootstrapToken: body.bootstrapToken,
+            inviteCode: body.inviteCode,
+            profile: body.profile,
+          })
+        }
+
         let data
         try {
-          data = await joinRoom(
-            roomId,
-            {
-              clientRequestId: saved ? crypto.randomUUID() : bootstrap.clientRequestId,
-              bootstrapToken: saved ? undefined : bootstrap.token,
-              inviteCode,
-              profile: {
-                nickname: values.nickname,
-                interestTags: values.interestTags,
-                bio: values.bio,
-              },
-            },
-            saved ? { credential: saved.credential } : undefined,
-          )
+          data = await joinRoom(roomId, body, saved ? { credential: saved.credential } : undefined)
         } catch (caught) {
           // 另一个标签页刚用同一份 bootstrap 成功：直接采用它的结果，别再匿名新建
           if (caught instanceof ApiError && caught.code === 'BOOTSTRAP_CONFLICT') {
@@ -113,25 +130,31 @@ export default function JoinPage() {
           credential: data.memberCredential,
           membershipId: membership.id,
           memberId: data.member.id,
-          nickname: values.nickname,
-          interestTags: values.interestTags,
+          nickname: body.profile.nickname,
+          interestTags: body.profile.interestTags,
           role: data.member.role,
           joinPath: data.room.invitation.joinPath,
         })
+        clearPendingJoin(roomId)
         clearBootstrap(roomId)
         navigate(`/rooms/${roomId}`, { replace: true })
       })
     } catch (caught) {
-      if (caught instanceof ApiError) {
-        if (caught.code === 'BOOTSTRAP_CONFLICT') {
-          clearBootstrap(roomId)
-        }
+      if (caught instanceof JoinLockTimeout) {
+        setError(caught.message)
+      } else if (caught instanceof ApiError) {
         if (caught.fieldErrors.length > 0) {
           setFieldErrors(
             Object.fromEntries(caught.fieldErrors.map((item) => [item.path, item.message])),
           )
         }
-        setError(errorText(caught.code, caught.message))
+        if (caught.code === 'BOOTSTRAP_CONFLICT') {
+          // 保留这次的请求：可能是上一次已经成功，只是没拿到回执
+          setConflict(true)
+          setError('上一次入房可能已经成功，但没收到回执')
+        } else {
+          setError(errorText(caught.code, caught.message))
+        }
       } else {
         setError('没进去，稍后再试')
       }
@@ -192,13 +215,49 @@ export default function JoinPage() {
         </section>
 
         <section>
-          {staleSession && !linkBroken ? (
+          {conflict ? (
+            <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
+              <h2 className="text-[17px] font-bold text-[#33291d]">上一次入房可能已经成功</h2>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                服务端说这次的凭证已经用过了。先用同一份资料再确认一次；如果确实没进去，再换新身份。
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => lastValues && void handleSubmit(lastValues)}
+                  className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
+                >
+                  {submitting ? '确认中…' : '重试确认'}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    clearPendingJoin(roomId)
+                    clearBootstrap(roomId)
+                    setConflict(false)
+                    if (lastValues) void handleSubmit(lastValues)
+                  }}
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2 disabled:opacity-60"
+                >
+                  放弃，换新身份
+                </button>
+              </div>
+              {error && <p className="mt-3 text-[11.5px] text-brick">{error}</p>}
+            </div>
+          ) : staleSession && !linkBroken ? (
             <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
               <h2 className="text-[17px] font-bold text-[#33291d]">这次入房已经结束</h2>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
                 你的身份还在（{staleSession.nickname ?? '原来的你'}），可以用它重新占一个座位。
               </p>
-              <div className="mt-5 flex justify-center gap-2.5">
+              {error && (
+                <p className="mt-3 rounded-xl bg-[rgba(177,105,74,.12)] px-3 py-2 text-[12px] text-brick">
+                  {error}
+                </p>
+              )}
+              <div className="mt-5 flex flex-wrap justify-center gap-2.5">
                 <button
                   type="button"
                   disabled={submitting}
@@ -212,6 +271,17 @@ export default function JoinPage() {
                   className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
                 >
                   {submitting ? '正在重新加入…' : '用原身份重新加入'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 保留凭证，只是换成表单里重新填写资料
+                    setStaleSession(null)
+                    setExisting(false)
+                  }}
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
+                >
+                  改资料后重新加入
                 </button>
                 <button
                   type="button"

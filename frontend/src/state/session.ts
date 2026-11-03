@@ -17,12 +17,25 @@ export interface PendingBootstrap {
   clientRequestId: string
 }
 
+/** 已发出但还没拿到凭证的入房请求：正文原样保存，重试时逐字节复用。 */
+export interface PendingJoin {
+  clientRequestId: string
+  bootstrapToken?: string
+  inviteCode?: string
+  profile: { nickname: string; interestTags: string[]; bio: string }
+  at: number
+}
+
 function sessionKey(roomId: string) {
   return `tt:${roomId}:session`
 }
 
 function bootstrapKey(roomId: string) {
   return `tt:${roomId}:bootstrap`
+}
+
+function pendingJoinKey(roomId: string) {
+  return `tt:${roomId}:pending-join`
 }
 
 function randomHex(bytes: number): string {
@@ -96,6 +109,34 @@ export function loadBootstrap(roomId: string): PendingBootstrap {
   return fresh
 }
 
+export function loadPendingJoin(roomId: string): PendingJoin | null {
+  try {
+    const raw = localStorage.getItem(pendingJoinKey(roomId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<PendingJoin>
+    if (!parsed.clientRequestId || !parsed.profile) return null
+    return parsed as PendingJoin
+  } catch {
+    return null
+  }
+}
+
+export function savePendingJoin(roomId: string, pending: Omit<PendingJoin, 'at'>) {
+  try {
+    localStorage.setItem(pendingJoinKey(roomId), JSON.stringify({ ...pending, at: Date.now() }))
+  } catch {
+    /* 忽略 */
+  }
+}
+
+export function clearPendingJoin(roomId: string) {
+  try {
+    localStorage.removeItem(pendingJoinKey(roomId))
+  } catch {
+    /* 忽略 */
+  }
+}
+
 export function clearBootstrap(roomId: string) {
   try {
     localStorage.removeItem(bootstrapKey(roomId))
@@ -108,28 +149,61 @@ export function clearBootstrap(roomId: string) {
  * 跨标签页串行化同一次入房：同一房间的提交排队执行，
  * 后到的标签页在锁内会看到前一个标签页存下的会话，直接复用。
  */
-export async function withJoinLock<T>(roomId: string, task: () => Promise<T>): Promise<T> {
+export class JoinLockTimeout extends Error {
+  constructor() {
+    super('另一个标签页正在入房，稍后再试')
+    this.name = 'JoinLockTimeout'
+  }
+}
+
+/**
+ * 跨标签页串行入房。没有 Web Locks 时用 localStorage 租约：
+ * 拿到锁后定期续租，等不到锁就抛 JoinLockTimeout——绝不无锁执行。
+ */
+export async function withJoinLock<T>(
+  roomId: string,
+  task: () => Promise<T>,
+  timeoutMs = 20000,
+): Promise<T> {
   const locks = (navigator as Navigator & { locks?: LockManager }).locks
   if (locks?.request) {
     return locks.request(`tt-join:${roomId}`, task)
   }
-  // 没有 Web Locks 时退化成 localStorage 租约
+
   const key = `tt:${roomId}:join-lock`
   const mine = `${Date.now()}-${Math.random().toString(16).slice(2)}`
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  const deadline = Date.now() + timeoutMs
+
+  const readHolder = () => {
     const raw = localStorage.getItem(key)
-    const holder = raw ? (JSON.parse(raw) as { owner: string; at: number }) : null
-    if (!holder || Date.now() - holder.at > 8000) {
+    if (!raw) return null
+    try {
+      return JSON.parse(raw) as { owner: string; at: number }
+    } catch {
+      return null
+    }
+  }
+
+  while (Date.now() < deadline) {
+    const holder = readHolder()
+    if (!holder || holder.owner === mine || Date.now() - holder.at > 8000) {
       localStorage.setItem(key, JSON.stringify({ owner: mine, at: Date.now() }))
+      const renew = setInterval(() => {
+        if (readHolder()?.owner === mine) {
+          localStorage.setItem(key, JSON.stringify({ owner: mine, at: Date.now() }))
+        }
+      }, 2000)
       try {
         return await task()
       } finally {
-        localStorage.removeItem(key)
+        clearInterval(renew)
+        if (readHolder()?.owner === mine) localStorage.removeItem(key)
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 150))
   }
-  return task()
+
+  throw new JoinLockTimeout()
 }
 
 /**

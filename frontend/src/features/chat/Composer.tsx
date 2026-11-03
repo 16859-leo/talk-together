@@ -39,10 +39,12 @@ export function Composer({ canMention, disabled, cooldownUntil, onSend }: Compos
       setMentionPicked(false)
       return
     }
-    // 失败时只补回原文；如果用户已经在写下一句，就别覆盖他的草稿
-    setValue((current) => (current.trim().length === 0 ? text : current))
-    // 提及也一起还原，否则重试会复用同一个请求 ID 却换了请求体
-    if (pickedMention) setMentionPicked(true)
+    // 失败时只在输入框还空着的时候补回原文；用户已经在写下一句就别覆盖
+    const current = inputRef.current?.value ?? ''
+    const restore = current.trim().length === 0
+    setValue(restore ? text : current)
+    // 提及只跟原文一起还原：新草稿不能继承上一条的 AI 提及
+    if (restore && pickedMention) setMentionPicked(true)
     inputRef.current?.focus()
   }
 

@@ -83,6 +83,7 @@ export default function RoomPage() {
     setSession(loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null))
     setEnded(null)
     setNotice(null)
+    setTerminal(false)
     return () => {
       dispatch({ type: 'reset' })
     }
@@ -196,7 +197,12 @@ export default function RoomPage() {
     if (typeof BroadcastChannel === 'undefined') return undefined
     const channel = new BroadcastChannel(`tt:${roomId || 'room_demo'}`)
     channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
-      if (event.data?.type === 'left' || event.data?.type === 'closed') {
+      const type = event.data?.type
+      if (type === 'left') {
+        // 成员只是这次入房结束，身份保留下来可以原身份重新加入
+        clearMembership(roomId)
+        navigate('/')
+      } else if (type === 'closed') {
         clearSession(roomId)
         navigate('/')
       }
@@ -220,6 +226,12 @@ export default function RoomPage() {
       state.selfEnded === 'removed' ? END_TEXT.MEMBER_REMOVED : END_TEXT.MEMBERSHIP_INACTIVE,
     )
   }, [state.selfEnded, roomId])
+
+  // 有身份但没有 membership：说明这次入房已经结束，直接给终态页（刷新后也能看到）
+  useEffect(() => {
+    if (!session || session.membershipId || ended) return
+    setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
+  }, [session, ended])
 
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
@@ -574,6 +586,12 @@ export default function RoomPage() {
     )
   }
 
+  // 内存里的会话可能已经被清空，但 localStorage 里还留着可复用的身份
+  const recoverable = (() => {
+    const saved = loadSession(roomId)
+    return saved && !saved.membershipId ? saved : null
+  })()
+
   if (ended) {
     return (
       <div className="page-bg paper grid min-h-screen place-items-center px-6">
@@ -588,11 +606,15 @@ export default function RoomPage() {
             >
               回到首页
             </button>
-            {session && !session.membershipId && (
+            {recoverable && (
               <button
                 type="button"
                 onClick={() =>
-                  navigate(session?.joinPath ?? state.room?.invitation.joinPath ?? `/join/${roomId}`)
+                  navigate(
+                    recoverable?.joinPath ??
+                      state.room?.invitation.joinPath ??
+                      `/join/${roomId}`,
+                  )
                 }
                 className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
               >
