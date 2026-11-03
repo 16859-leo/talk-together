@@ -6,7 +6,7 @@ import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { Avatar } from '../shared/ui/Avatar'
 import { DEMO_INVITE_PATH } from '../state/demo'
-import { clearBootstrap, loadBootstrap, loadSession, saveSession } from '../state/session'
+import { clearBootstrap, clearSession, loadBootstrap, loadSession, saveSession } from '../state/session'
 
 const FALLBACK_POLICY: ValidationPolicy = {
   nickname: { minLength: 1, maxLength: null },
@@ -89,6 +89,9 @@ export default function JoinPage() {
         credential: data.memberCredential,
         membershipId: membership.id,
         memberId: data.member.id,
+        nickname: values.nickname,
+        interestTags: values.interestTags,
+        role: data.member.role,
       })
       clearBootstrap(roomId)
       navigate(`/rooms/${roomId}`, { replace: true })
@@ -187,10 +190,14 @@ export default function JoinPage() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => setExisting(false)}
+                  onClick={() => {
+                    clearSession(roomId)
+                    clearBootstrap(roomId)
+                    setExisting(false)
+                  }}
                   className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
                 >
-                  换一个昵称
+                  换个身份重新加入
                 </button>
               </div>
             </div>

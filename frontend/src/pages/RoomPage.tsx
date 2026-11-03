@@ -84,6 +84,68 @@ export default function RoomPage() {
     }
   }, [state.ready])
 
+  // 快照里的 self 必须和本地凭证一致；Mock 的固定数据会对不上，以本地凭证为准。
+  useEffect(() => {
+    if (!state.ready || !state.self || !session) return
+    if (state.self.memberId === session.memberId) return
+    dispatch({
+      type: 'self-override',
+      self: {
+        memberId: session.memberId,
+        membershipId: session.membershipId,
+        role: session.role ?? 'member',
+        joinedSequence: state.self.joinedSequence,
+      },
+    })
+  }, [state.ready, state.self, session])
+
+  // 快照里没有「我」的时候（后端没回推、或 Mock 固定数据），先把本人补进名单。
+  useEffect(() => {
+    if (!state.ready || !state.self || !session?.nickname) return
+    // 等 self-override 生效后再动名单，否则会拿快照里的别人当自己
+    if (state.self.memberId !== session.memberId) return
+    const selfId = state.self.memberId
+    const existing = state.members.find((member) => member.id === selfId)
+
+    if (!existing) {
+      dispatch({
+        type: 'member-added',
+        member: {
+          id: selfId,
+          role: state.self.role,
+          profile: {
+            nickname: session.nickname,
+            interestTags: session.interestTags ?? [],
+            bio: '',
+          },
+          membership: {
+            id: state.self.membershipId,
+            joinedSequence: state.self.joinedSequence,
+            joinedAt: new Date().toISOString(),
+            presence: 'online',
+            recoveryExpiresAt: null,
+          },
+        },
+      })
+      return
+    }
+
+    // 名单里有这个 id，但资料还是别人的（Mock 的固定成员），以本地填的为准
+    if (existing.profile.nickname !== session.nickname) {
+      dispatch({
+        type: 'member-updated',
+        member: {
+          ...existing,
+          profile: {
+            nickname: session.nickname,
+            interestTags: session.interestTags ?? existing.profile.interestTags,
+            bio: existing.profile.bio,
+          },
+        },
+      })
+    }
+  }, [state.ready, state.self, state.members, session])
+
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
     if (!state.closed) return
@@ -151,6 +213,11 @@ export default function RoomPage() {
     () => state.members.find((m) => m.id === self?.memberId),
     [state.members, self?.memberId],
   )
+  // 房间名跟房主走，不跟着「我」变
+  const hostMember = useMemo(
+    () => state.members.find((m) => m.id === state.room?.hostMemberId) ?? state.members[0],
+    [state.members, state.room?.hostMemberId],
+  )
   const canMention = self?.role === 'host'
   const onlineCount = state.members.filter((m) => m.membership?.presence !== 'offline').length
   const capacity = state.room?.capacity ?? 5
@@ -158,7 +225,8 @@ export default function RoomPage() {
   const hostLeft = formatLeft(state.room?.hostRecoveryExpiresAt ?? null, now)
   const hostReconnecting = state.room?.status === 'host_reconnecting'
   const reconnecting = status === 'reconnecting' || status === 'failed'
-  const composerDisabled = status === 'reconnecting' || status === 'failed' || status === 'closed'
+  // 发送走 REST，和 WS 通不通没关系：只有房间关了才禁止输入。
+  const composerDisabled = state.closed
   const statusText = STATUS_TEXT[status]
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
@@ -178,7 +246,25 @@ export default function RoomPage() {
         session,
       )
       pendingSend.current = null
-      dispatch({ type: 'local-message', message: data.message })
+      // Mock 或后端回执可能带着别人的示例数据：对不上就用本地这条兜底
+      const echoed = data.message
+      const usable =
+        echoed.text === text && echoed.author.memberId === session.memberId
+      const own: MemberMessage = usable
+        ? echoed
+        : {
+            ...echoed,
+            id: `local_${echoed.id}_${Date.now()}`,
+            text,
+            author: {
+              memberId: session.memberId,
+              nickname: selfMember?.profile.nickname ?? echoed.author.nickname,
+            },
+            createdAt: new Date().toISOString(),
+            createdSequence: Math.max(echoed.createdSequence, state.cursor + 1),
+          }
+
+      dispatch({ type: 'local-message', message: own })
       if (data.ai.status === 'rejected') {
         setNotice(`AI 没受理：${data.ai.error.message}`)
       } else if (data.ai.status === 'ignored') {
@@ -324,7 +410,7 @@ export default function RoomPage() {
           </div>
           <div className="flex items-center gap-2.5 text-[13px] text-ink-2">
             <span className="font-medium text-ink">
-              {selfMember?.profile.nickname ?? '房间'} 的房间
+              {hostMember?.profile.nickname ?? '房间'} 的房间
             </span>
             <span className="rounded-full border border-rule px-2.5 py-0.5 text-[12px]">
               {state.members.length} / {capacity}

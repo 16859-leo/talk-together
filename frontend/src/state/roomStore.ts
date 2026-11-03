@@ -36,7 +36,9 @@ type Action =
   | { type: 'event'; event: ServerMessage }
   | { type: 'local-message'; message: MemberMessage }
   | { type: 'member-updated'; member: ActiveMember }
+  | { type: 'member-added'; member: ActiveMember }
   | { type: 'member-removed'; membershipId: string }
+  | { type: 'self-override'; self: SnapshotData['self'] }
   | { type: 'reset' }
 
 function sortMessages(messages: Message[]): Message[] {
@@ -206,6 +208,12 @@ function reducer(state: RoomState, action: Action): RoomState {
           member.id === action.member.id ? action.member : member,
         ),
       }
+    case 'member-added':
+      return state.members.some((member) => member.id === action.member.id)
+        ? state
+        : { ...state, members: [...state.members, action.member] }
+    case 'self-override':
+      return { ...state, self: action.self }
     case 'member-removed':
       return {
         ...state,

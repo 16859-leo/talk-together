@@ -65,6 +65,9 @@ export default function CreatePage() {
         credential: data.memberCredential,
         membershipId: membership.id,
         memberId: data.member.id,
+        nickname: values.nickname,
+        interestTags: values.interestTags,
+        role: data.member.role,
       })
       clearBootstrap('create')
       navigate(`/rooms/${data.room.id}`, { replace: true })

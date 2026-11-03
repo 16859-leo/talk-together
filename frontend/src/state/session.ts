@@ -2,6 +2,10 @@ export interface RoomSession {
   credential: string
   membershipId: string
   memberId: string
+  /** 本地先记住资料，快照没带上自己时也能先把「我」画出来 */
+  nickname?: string
+  interestTags?: string[]
+  role?: 'host' | 'member'
 }
 
 /** 首次提交用的引导凭证：同一房间、同一次入房重试时复用，成功后清理。 */
