@@ -49,7 +49,7 @@ const cases: { readonly name: string; readonly context: CapabilityContext }[] = 
     context: ctx({
       purpose: 'invitation',
       invitedMember: members[1] ?? null,
-      currentTopic: { title: '你拍过最满意的照片是在哪儿？', content: '' },
+      currentTopic: { title: '你拍过最满意的照片是在哪儿？', content: '', kind: 'popular' },
     }),
   },
 ];

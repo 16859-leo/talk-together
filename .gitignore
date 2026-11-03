@@ -31,6 +31,18 @@ go.work.sum
 # Node development dependencies
 node_modules/
 
+# Box-Agent 会话临时目录与一次性脚本
+.box-agent-scratch/
+.box-agent/
+backend/patch-assert.mjs
+
+# 演练输出（可由 npm run demo 重新生成）
+backend/demo-output.txt
+
+# 聊天工具导出的临时图片
+_cgi-bin_*
+image-*.png
+
 # Editor/IDE
 # .idea/
 # .vscode/

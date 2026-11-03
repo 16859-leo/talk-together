@@ -4,8 +4,11 @@
 
 ## 装配
 
+默认 `npm start` 与 demo 使用 `createStubCapability()`，不会调用真实模型。
+以下为手动装配示例：需要把真实能力传给 `build`，仅设置环境变量不会自动切换插件。
+
 ```ts
-// backend/src/app.ts
+// backend/src/main.ts 中的真实能力装配
 import { createTopicsCapability } from './capabilities/topics/index.ts';
 
 const capability = createTopicsCapability({
@@ -47,13 +50,16 @@ infrastructure/zhihu/      知乎数据源、缓存、适宜性筛选、备用�
 ## 测试
 
 ```bash
-npm test --prefix backend          # 94 项离线，零额度
+npm test --prefix backend          # 后端 103 + Agent 94，共 197 项离线测试
 # 真实冒烟（消耗少量额度）
 DEEPSEEK_API_KEY=... ZHIHU_CLI_PATH=... \
-  node --experimental-strip-types test/smoke-capability.ts
+  node backend/test/smoke-capability.ts
 ```
 
-## 待与后端核对
+以上命令在仓库根目录执行。离线测试不需要密钥或知乎 CLI。
 
-- `CapabilityTopicDraft` / `CapabilityTopicView` 字段：#4 只给了类型名未给字段，本模块按契约 `Topic` 去 `id`/`publishedAt` 推导，需与 2 号的 `application/capability.ts` 对齐
-- 实际装配以后端导出的接口类型为准，本模块的 `application/capability.ts` 为同构复刻
+## 共用接口
+
+- 应用层和插件共用 `src/application/capability.ts`，不再维护独立复刻。
+- `CapabilityTopicView` 包含 `title`、`content` 和 `kind`；邀答上下文需要带出话题类型。
+- `CapabilityTopicDraft` 的 `sourceLabel`、`sourceUrl` 可省略或为 `null`；应用层负责发布话题、生成 ID 和发布时间。
