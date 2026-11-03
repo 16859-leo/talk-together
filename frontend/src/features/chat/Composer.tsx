@@ -36,7 +36,9 @@ export function Composer({ canMention, disabled, cooldownUntil, onSend }: Compos
     const ok = await onSend(text, mentions)
     setSending(false)
     if (ok) {
-      setMentionPicked(false)
+      // 只在输入框还空着（没有新草稿）时清提及，
+      // 否则会把用户为下一条消息选的 AI 一起清掉
+      if ((inputRef.current?.value ?? '').trim().length === 0) setMentionPicked(false)
       return
     }
     // 失败时只在输入框还空着的时候补回原文；用户已经在写下一句就别覆盖

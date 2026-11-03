@@ -21,6 +21,21 @@ import {
     type RoomSession,
   } from '../state/session'
 import { formatLeft, useNow } from '../shared/ui/useNow'
+import {
+  FATAL_STREAM_CODES,
+  resolveTerminal,
+  type TerminalReason,
+} from '../features/room/lifecycle'
+import {
+  canReuseRequestId,
+  crossTabAction,
+  isSameEpoch,
+  openRoomChannel,
+  type CrossTabEvent,
+  type OutgoingDraft,
+  type RoomChannel,
+  type RoomEpoch,
+} from '../shared/realtime/crossTab'
 
 const FALLBACK_POLICY: ValidationPolicy = {
   nickname: { minLength: 1, maxLength: null },
@@ -39,14 +54,7 @@ const STATUS_TEXT: Record<StreamStatus, string | null> = {
   failed: '连接不上服务器',
 }
 
-const END_TEXT: Record<string, { title: string; detail: string }> = {
-  MEMBER_REMOVED: { title: '你被移出了这个房间', detail: '房主结束了你的入场，可以等下一次邀请。' },
-  ROOM_UNAVAILABLE: { title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' },
-  MEMBERSHIP_INACTIVE: { title: '这次入房已经结束', detail: '从邀请链接重新进来就好。' },
-  MEMBERSHIP_CHANGED: { title: '这次入房已经结束', detail: '你用同一个身份重新进过一次房，刷新页面即可。' },
-  MEMBER_CREDENTIAL_INVALID: { title: '身份凭证失效了', detail: '从邀请链接重新进来，会给你一个新的身份。' },
-  INVITATION_INVALID: { title: '邀请链接无效', detail: '这个链接已经失效了，找房主重新要一个。' },
-}
+
 
 export default function RoomPage() {
   const { roomId = '' } = useParams()
@@ -69,8 +77,10 @@ export default function RoomPage() {
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
   /** 进入终态后不再建连、不再归并事件 */
   const [terminal, setTerminal] = useState(false)
-  const pendingSend = useRef<{ id: string; text: string } | null>(null)
-  const channelRef = useRef<BroadcastChannel | null>(null)
+  const pendingSend = useRef<OutgoingDraft | null>(null)
+  /** 房间上下文令牌：切换房间或卸载后，旧回执不再写入 */
+  const epochRef = useRef<RoomEpoch>({ roomId, token: 0 })
+  const channelRef = useRef<RoomChannel | null>(null)
 
   // 会话放进 state：改完资料要立刻更新，否则「补自己」的逻辑会用旧昵称盖回去
   const [session, setSession] = useState<RoomSession | null>(
@@ -79,6 +89,7 @@ export default function RoomPage() {
 
   // 切换房间或离开时清空单例状态，别把上一个房间的聊天带过来
   useEffect(() => {
+    epochRef.current = { roomId, token: epochRef.current.token + 1 }
     dispatch({ type: 'reset' })
     setSession(loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null))
     setEnded(null)
@@ -120,6 +131,17 @@ export default function RoomPage() {
       dispatch({ type: 'snapshot', data: demoSnapshot, cursor: demoCursor })
     }
   }, [state.ready])
+
+  /** 终态统一出口：决定文案与身份去留，并停掉连接、清空房间数据 */
+  function endWith(reason: TerminalReason) {
+    const outcome = resolveTerminal(reason)
+    setTerminal(true)
+    if (outcome.identity === 'clear') clearSession(roomId)
+    else clearMembership(roomId)
+    setSession(null)
+    dispatch({ type: 'reset' })
+    setEnded({ title: outcome.title, detail: outcome.detail })
+  }
 
   // 快照的 self 与本地凭证不一致只可能是 Mock：开发态以本地为准，
   // 联调时信任服务端并在控制台提示，别把真实问题藏起来。
@@ -194,19 +216,15 @@ export default function RoomPage() {
 
   // 同一浏览器的多个标签页共享身份：退出或关房时要一起结束
   useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return undefined
-    const channel = new BroadcastChannel(`tt:${roomId || 'room_demo'}`)
-    channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
-      const type = event.data?.type
-      if (type === 'left') {
-        // 成员只是这次入房结束，身份保留下来可以原身份重新加入
-        clearMembership(roomId)
+    const channel = openRoomChannel({
+      roomId: roomId || 'room_demo',
+      onEvent: (event: CrossTabEvent) => {
+        const action = crossTabAction(event)
+        if (action === 'clear-membership') clearMembership(roomId)
+        if (action === 'clear-session') clearSession(roomId)
         navigate('/')
-      } else if (type === 'closed') {
-        clearSession(roomId)
-        navigate('/')
-      }
-    }
+      },
+    })
     channelRef.current = channel
     return () => {
       channelRef.current = null
@@ -218,29 +236,19 @@ export default function RoomPage() {
   useEffect(() => {
     if (!state.selfEnded) return
     setTerminal(true)
-    if (state.selfEnded === 'removed') clearSession(roomId)
-    else clearMembership(roomId)
-    setSession(null)
-    dispatch({ type: 'reset' })
-    setEnded(
-      state.selfEnded === 'removed' ? END_TEXT.MEMBER_REMOVED : END_TEXT.MEMBERSHIP_INACTIVE,
-    )
+    endWith({ kind: state.selfEnded })
   }, [state.selfEnded, roomId])
 
   // 有身份但没有 membership：说明这次入房已经结束，直接给终态页（刷新后也能看到）
   useEffect(() => {
-    if (!session || session.membershipId || ended) return
-    setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
+    if (!session || session.membershipId || ended || terminal) return
+    endWith({ kind: 'left' })
   }, [session, ended])
 
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
     if (!state.closed) return
-    setTerminal(true)
-    clearSession(roomId)
-    setSession(null)
-    dispatch({ type: 'reset' })
-    setEnded({ title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' })
+    endWith({ kind: 'closed' })
   }, [state.closed, roomId])
 
   // 恢复身份：凭证还有效就继续，入房已结束就给出终态。
@@ -252,19 +260,13 @@ export default function RoomPage() {
         if (!alive) return
         if (!data.member.membership) {
           // 成员凭证仍然有效，只是这次入房结束了：保留身份，支持原身份重新加入
-          clearMembership(roomId)
-          setTerminal(true)
-          setSession(null)
-          dispatch({ type: 'reset' })
-          setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
+          endWith({ kind: 'left' })
         }
       })
       .catch((error: unknown) => {
         if (!alive || !(error instanceof ApiError)) return
-        const text = END_TEXT[error.code]
-        if (text) {
-          clearSession(roomId)
-          setEnded(text)
+        if (FATAL_STREAM_CODES.has(error.code)) {
+          endWith({ kind: 'fatal', code: error.code })
         }
       })
     return () => {
@@ -286,20 +288,7 @@ export default function RoomPage() {
         if (next === 'failed' && detail) setNotice(detail)
       },
       onMessage: applyServerMessage,
-      onFatal: (error) => {
-        const text = END_TEXT[error.code]
-        if (!text) return
-        setTerminal(true)
-        // 身份凭证仍然有效的，只结束这次入房，保留可复用的身份
-        if (error.code === 'MEMBER_CREDENTIAL_INVALID' || error.code === 'ROOM_UNAVAILABLE') {
-          clearSession(roomId)
-        } else {
-          clearMembership(roomId)
-        }
-        setSession(null)
-        dispatch({ type: 'reset' })
-        setEnded(text)
-      },
+      onFatal: (error) => endWith({ kind: 'fatal', code: error.code }),
     })
     return () => {
       controller.abort()
@@ -357,8 +346,11 @@ export default function RoomPage() {
     }
     setNotice(null)
 
-    const reuse = pendingSend.current?.text === text ? pendingSend.current.id : null
+    const reuse = canReuseRequestId(pendingSend.current, text, mentions)
+      ? pendingSend.current?.id
+      : null
     const clientRequestId = reuse ?? crypto.randomUUID()
+    const capturedEpoch = epochRef.current
 
     try {
       const data = await sendMessage(
@@ -366,6 +358,8 @@ export default function RoomPage() {
         { clientRequestId, text, mentions },
         activeSession,
       )
+      // 已经切走房间：这条回执不能再写进当前房间
+      if (!isSameEpoch(epochRef.current, capturedEpoch)) return false
       pendingSend.current = null
       // Mock 或后端回执可能带着别人的示例数据：对不上就用本地这条兜底
       const echoed = data.message
@@ -401,7 +395,7 @@ export default function RoomPage() {
 
       // 网络问题：记住这次的 ID 便于重试；只有开发态才假装发出去
       if (error.status === 0) {
-        pendingSend.current = { id: clientRequestId, text }
+        pendingSend.current = { id: clientRequestId, text, mentions }
         if (!import.meta.env.DEV) {
           setNotice('没发出去，检查网络后再试一次')
           return false
@@ -423,19 +417,10 @@ export default function RoomPage() {
       }
 
       const retryable = error.status === 429 || error.status >= 500
-      pendingSend.current = retryable ? { id: clientRequestId, text } : null
+      pendingSend.current = retryable ? { id: clientRequestId, text, mentions } : null
 
-      const terminalText = END_TEXT[error.code]
-      if (terminalText) {
-        setTerminal(true)
-        if (error.code === 'MEMBER_CREDENTIAL_INVALID' || error.code === 'ROOM_UNAVAILABLE') {
-          clearSession(roomId)
-        } else {
-          clearMembership(roomId)
-        }
-        setSession(null)
-        dispatch({ type: 'reset' })
-        setEnded(terminalText)
+      if (FATAL_STREAM_CODES.has(error.code)) {
+        endWith({ kind: 'fatal', code: error.code })
         return false
       }
 
@@ -471,7 +456,7 @@ export default function RoomPage() {
     setLeaveOpen(false)
     if (canMention) clearSession(roomId)
     else clearMembership(roomId)
-    channelRef.current?.postMessage({ type: canMention ? 'closed' : 'left' })
+    channelRef.current?.publish(canMention ? 'closed' : 'left')
     navigate('/')
   }
 

@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ProfileForm, type JoinValues } from '../features/join/ProfileForm'
+import {
+  canReplayPending,
+  isDefinitiveFailure,
+  toJoinBody,
+  toPendingJoin,
+} from '../features/join/joinRequest'
 import { ApiError, getClientConfig } from '../shared/api/client'
 import { errorText } from '../shared/api/errors'
 import { joinRoom } from '../shared/api/room'
@@ -80,27 +86,25 @@ export default function JoinPage() {
           return
         }
 
-        // 上一次请求如果没拿到回执，正文原样复用同一份，服务端幂等会返回同一个结果
-        const pending = loadPendingJoin(roomId)
-        const body =
-          pending ?? {
-            clientRequestId: saved ? crypto.randomUUID() : loadBootstrap(roomId).clientRequestId,
-            bootstrapToken: saved ? undefined : loadBootstrap(roomId).token,
-            inviteCode,
-            profile: {
-              nickname: values.nickname,
-              interestTags: values.interestTags,
-              bio: values.bio,
-            },
-          }
-        if (!pending) {
-          savePendingJoin(roomId, {
-            clientRequestId: body.clientRequestId,
-            bootstrapToken: body.bootstrapToken,
-            inviteCode: body.inviteCode,
-            profile: body.profile,
-          })
-        }
+        // 只有「上一次结果未知 + 内容完全一致」才重放同一份请求，避免旧资料覆盖新修改
+        const stored = loadPendingJoin(roomId)
+        const replay = canReplayPending(stored, values, inviteCode)
+        if (stored && !replay) clearPendingJoin(roomId)
+
+        const bootstrap = loadBootstrap(roomId)
+        const body = replay && stored
+          ? toJoinBody(stored)
+          : {
+              clientRequestId: saved ? crypto.randomUUID() : bootstrap.clientRequestId,
+              bootstrapToken: saved ? undefined : bootstrap.token,
+              inviteCode,
+              profile: {
+                nickname: values.nickname,
+                interestTags: values.interestTags,
+                bio: values.bio,
+              },
+            }
+        if (!replay) savePendingJoin(roomId, toPendingJoin(body))
 
         let data
         try {
@@ -153,6 +157,8 @@ export default function JoinPage() {
           setConflict(true)
           setError('上一次入房可能已经成功，但没收到回执')
         } else {
+          // 服务端已经明确拒绝，这次请求不再重放
+          if (isDefinitiveFailure(caught.code)) clearPendingJoin(roomId)
           setError(errorText(caught.code, caught.message))
         }
       } else {
@@ -288,6 +294,7 @@ export default function JoinPage() {
                   onClick={() => {
                     clearSession(roomId)
                     clearBootstrap(roomId)
+                    clearPendingJoin(roomId)
                     setStaleSession(null)
                     setExisting(false)
                   }}
