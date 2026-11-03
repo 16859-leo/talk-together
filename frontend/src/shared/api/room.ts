@@ -1,11 +1,15 @@
 import { request } from './client'
 import type {
+  ClosedData,
   ConnectionTicketData,
   LeaveData,
+  ProfilePatch,
+  RemoveData,
   RoomEntryData,
   SelfData,
   SendMessageData,
   SendMessageBody,
+  UpdateProfileData,
 } from './types'
 
 export interface Auth {
@@ -74,6 +78,42 @@ export async function getSelf(roomId: string, credential: string): Promise<SelfD
 export async function leaveRoom(roomId: string, auth: Auth): Promise<LeaveData> {
   return request<LeaveData>(`/rooms/${roomId}/members/me`, {
     method: 'DELETE',
+    credential: auth.credential,
+    membershipId: auth.membershipId,
+  })
+}
+
+/** 房主移出成员；被移出的临时身份不能再加入当前房间。 */
+export async function removeMember(
+  roomId: string,
+  memberId: string,
+  auth: Auth,
+): Promise<RemoveData> {
+  return request<RemoveData>(`/rooms/${roomId}/members/${memberId}`, {
+    method: 'DELETE',
+    credential: auth.credential,
+    membershipId: auth.membershipId,
+  })
+}
+
+/** 房主关闭房间：后端先终结在途调用，再广播 room.closed。 */
+export async function closeRoom(roomId: string, auth: Auth): Promise<ClosedData> {
+  return request<ClosedData>(`/rooms/${roomId}`, {
+    method: 'DELETE',
+    credential: auth.credential,
+    membershipId: auth.membershipId,
+  })
+}
+
+/** 改自己的公开资料；改成什么由服务端归一化后回传。 */
+export async function updateSelf(
+  roomId: string,
+  patch: ProfilePatch,
+  auth: Auth,
+): Promise<UpdateProfileData> {
+  return request<UpdateProfileData>(`/rooms/${roomId}/members/me`, {
+    method: 'PATCH',
+    body: patch,
     credential: auth.credential,
     membershipId: auth.membershipId,
   })

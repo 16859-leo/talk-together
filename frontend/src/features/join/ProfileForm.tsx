@@ -14,6 +14,7 @@ interface ProfileFormProps {
   fieldErrors: Record<string, string>
   submitLabel: string
   submitNote: ReactNode
+  initial?: JoinValues
   onSubmit: (values: JoinValues) => void | Promise<void>
 }
 
@@ -27,12 +28,13 @@ export function ProfileForm({
   fieldErrors,
   submitLabel,
   submitNote,
+  initial,
   onSubmit,
 }: ProfileFormProps) {
-  const [nickname, setNickname] = useState('')
-  const [tags, setTags] = useState<string[]>([])
+  const [nickname, setNickname] = useState(initial?.nickname ?? '')
+  const [tags, setTags] = useState<string[]>(initial?.interestTags ?? [])
   const [tagDraft, setTagDraft] = useState('')
-  const [bio, setBio] = useState('')
+  const [bio, setBio] = useState(initial?.bio ?? '')
   const [touched, setTouched] = useState(false)
 
   const nicknameTooShort = nickname.trim().length < (policy.nickname.minLength ?? 1)

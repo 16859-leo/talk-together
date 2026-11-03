@@ -5,7 +5,8 @@ import { personColor } from '../../shared/ui/personColor'
 interface MemberCardProps {
   member: ActiveMember
   isSelf: boolean
-  onPick?: (member: ActiveMember) => void
+  canRemove?: boolean
+  onRemove?: (member: ActiveMember) => void
 }
 
 function countdown(iso: string | null): string | null {
@@ -16,17 +17,15 @@ function countdown(iso: string | null): string | null {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function MemberCard({ member, isSelf, onPick }: MemberCardProps) {
+export function MemberCard({ member, isSelf, canRemove, onRemove }: MemberCardProps) {
   const color = personColor(member.id)
   const presence = member.membership?.presence ?? 'connecting'
   const offline = presence === 'offline'
   const left = offline ? countdown(member.membership?.recoveryExpiresAt ?? null) : null
 
   return (
-    <button
-      type="button"
-      onClick={() => onPick?.(member)}
-      className="relative flex w-full items-start gap-2.5 rounded-2xl border-[1.5px] px-3 py-2.5 text-left transition-transform duration-500 hover:-translate-y-0.5"
+    <div
+      className="group relative flex w-full items-start gap-2.5 rounded-2xl border-[1.5px] px-3 py-2.5 transition-transform duration-500 hover:-translate-y-0.5"
       style={{
         borderColor: offline ? 'rgba(192,127,80,.55)' : color.c1,
         borderStyle: offline ? 'dashed' : 'solid',
@@ -67,7 +66,7 @@ export function MemberCard({ member, isSelf, onPick }: MemberCardProps) {
         </span>
       </span>
       <span className="absolute right-2.5 top-2.5 flex items-center gap-1.5 text-[10px] text-muted">
-        {offline ? (left ? `${left}` : '掉线') : '在线'}
+        {offline ? (left ?? '掉线') : '在线'}
         <i
           className="block h-1.5 w-1.5 rounded-full"
           style={{
@@ -76,6 +75,16 @@ export function MemberCard({ member, isSelf, onPick }: MemberCardProps) {
           }}
         />
       </span>
-    </button>
+
+      {canRemove && onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(member)}
+          className="absolute bottom-2 right-2.5 rounded-full border border-[rgba(177,105,74,.35)] bg-[rgba(255,253,247,.9)] px-2 py-0.5 text-[10.5px] text-brick opacity-0 transition-opacity duration-300 focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          移出
+        </button>
+      )}
+    </div>
   )
 }

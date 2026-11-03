@@ -84,6 +84,44 @@ describe('ws 场景回放', () => {
   })
 })
 
+describe('房主本地操作', () => {
+  const scenario = load('host-stream.json')
+  const snapshot = scenario.frames[0].message
+
+  function seed() {
+    dispatch({ type: 'reset' })
+    if (snapshot.type !== 'room.snapshot') throw new Error('fixture 首帧不是快照')
+    applyServerMessage(snapshot)
+  }
+
+  it('移出成员后名片立刻消失，游标不变', () => {
+    seed()
+    const before = getRoomState()
+    const target = before.members.find((m) => m.membership && m.role !== 'host')
+    if (!target?.membership) throw new Error('fixture 里没有可移出的成员')
+
+    dispatch({ type: 'member-removed', membershipId: target.membership.id })
+    const after = getRoomState()
+    expect(after.members.some((m) => m.id === target.id)).toBe(false)
+    expect(after.cursor).toBe(before.cursor)
+  })
+
+  it('改完资料后名片用的是服务端回传的值', () => {
+    seed()
+    const self = getRoomState().members[0]
+    dispatch({
+      type: 'member-updated',
+      member: {
+        ...self,
+        profile: { ...self.profile, nickname: '阿澄', interestTags: ['露营', '手冲'] },
+      },
+    })
+    const updated = getRoomState().members.find((m) => m.id === self.id)
+    expect(updated?.profile.nickname).toBe('阿澄')
+    expect(updated?.profile.interestTags).toEqual(['露营', '手冲'])
+  })
+})
+
 describe('状态归并细节', () => {
   const scenario = load('host-stream.json')
   const snapshot = scenario.frames[0].message

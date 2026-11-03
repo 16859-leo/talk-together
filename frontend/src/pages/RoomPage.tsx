@@ -4,13 +4,23 @@ import { MemberCard } from '../features/room/MemberCard'
 import { ChatFeed } from '../features/chat/ChatFeed'
 import { Composer } from '../features/chat/Composer'
 import { InviteDialog } from '../features/room/InviteDialog'
-import { ApiError } from '../shared/api/client'
-import { getSelf, leaveRoom, sendMessage } from '../shared/api/room'
-import type { MemberMessage } from '../shared/api/types'
+import { ProfileDialog } from '../features/room/ProfileDialog'
+import type { JoinValues } from '../features/join/ProfileForm'
+import { ApiError, getClientConfig } from '../shared/api/client'
+import { getSelf, leaveRoom, removeMember, sendMessage, updateSelf } from '../shared/api/room'
+import type { ActiveMember, MemberMessage, ValidationPolicy } from '../shared/api/types'
 import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
 import { demoCursor, demoSnapshot } from '../state/demo'
 import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
 import { clearSession, devSession, loadSession, type RoomSession } from '../state/session'
+
+const FALLBACK_POLICY: ValidationPolicy = {
+  nickname: { minLength: 1, maxLength: null },
+  interestTag: { minLength: 1, maxLength: null },
+  bio: { minLength: 0, maxLength: null },
+  message: { minLength: 1, maxLength: null },
+  interestTags: { minItems: 1, maxItems: null },
+}
 
 const STATUS_TEXT: Record<StreamStatus, string | null> = {
   ticketing: '连接中…',
@@ -37,12 +47,34 @@ export default function RoomPage() {
   const [status, setStatus] = useState<StreamStatus>('ticketing')
   const [notice, setNotice] = useState<string | null>(null)
   const [ended, setEnded] = useState<{ title: string; detail: string } | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<ActiveMember | null>(null)
+  const [removing, setRemoving] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({})
+  const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
   const pendingSend = useRef<{ id: string; text: string } | null>(null)
 
   const session = useMemo<RoomSession | null>(
     () => loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null),
     [roomId],
   )
+
+  // 改资料弹层的校验约束和入房页同源
+  useEffect(() => {
+    let alive = true
+    getClientConfig()
+      .then((config) => {
+        if (alive) setPolicy(config.validation)
+      })
+      .catch(() => {
+        /* 用兜底策略，不阻塞改资料 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // 后端未接时先用本地快照撑起界面；收到 WS 快照会被整体替换。
   useEffect(() => {
@@ -203,6 +235,57 @@ export default function RoomPage() {
     navigate('/')
   }
 
+  async function handleRemove() {
+    if (!removeTarget || !session) return
+    setRemoving(true)
+    try {
+      await removeMember(roomId || 'room_demo', removeTarget.id, session)
+      if (removeTarget.membership) {
+        dispatch({ type: 'member-removed', membershipId: removeTarget.membership.id })
+      }
+      setNotice(`已移出 ${removeTarget.profile.nickname}`)
+    } catch (error) {
+      setNotice(error instanceof ApiError ? error.message : '没移出成功，稍后再试')
+    } finally {
+      setRemoving(false)
+      setRemoveTarget(null)
+    }
+  }
+
+  async function handleSaveProfile(values: JoinValues) {
+    if (!session) return
+    setProfileBusy(true)
+    setProfileError(null)
+    setProfileFieldErrors({})
+    try {
+      const data = await updateSelf(
+        roomId || 'room_demo',
+        {
+          nickname: values.nickname,
+          interestTags: values.interestTags,
+          bio: values.bio,
+        },
+        session,
+      )
+      dispatch({ type: 'member-updated', member: data.member })
+      setProfileOpen(false)
+      setNotice('资料已更新，房间里的人都看到了')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setProfileError(error.message)
+        if (error.fieldErrors.length > 0) {
+          setProfileFieldErrors(
+            Object.fromEntries(error.fieldErrors.map((item) => [item.path, item.message])),
+          )
+        }
+      } else {
+        setProfileError('保存失败，稍后再试')
+      }
+    } finally {
+      setProfileBusy(false)
+    }
+  }
+
   if (ended) {
     return (
       <div className="page-bg paper grid min-h-screen place-items-center px-6">
@@ -286,11 +369,24 @@ export default function RoomPage() {
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false)
+                    setProfileError(null)
+                    setProfileFieldErrors({})
+                    setProfileOpen(true)
+                  }}
+                  className="block w-full rounded-xl px-3 py-2 text-left text-[13px] text-ink-2 hover:bg-[rgba(124,185,168,.16)]"
+                >
+                  改我的资料
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false)
                     setLeaveOpen(true)
                   }}
                   className="block w-full rounded-xl px-3 py-2 text-left text-[13px] text-brick hover:bg-[rgba(124,185,168,.16)]"
                 >
-                  退出房间
+                  {canMention ? '关闭房间' : '退出房间'}
                 </button>
               </div>
             )}
@@ -324,6 +420,10 @@ export default function RoomPage() {
                     key={member.id}
                     member={member}
                     isSelf={member.id === self?.memberId}
+                    canRemove={
+                      Boolean(canMention) && member.role !== 'host' && member.id !== self?.memberId
+                    }
+                    onRemove={setRemoveTarget}
                   />
                 ))}
               </div>
@@ -394,12 +494,73 @@ export default function RoomPage() {
                 onClick={() => void handleLeave()}
                 className="flex-1 rounded-2xl bg-brick py-2.5 text-[13px] font-semibold text-white"
               >
-                退出房间
+                {canMention ? '关闭房间' : '退出房间'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {removeTarget && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-[rgba(58,50,38,.26)] backdrop-blur-[4px]"
+          onClick={() => setRemoveTarget(null)}
+        >
+          <div
+            className="w-[360px] rounded-[28px] border-[1.5px] border-rule bg-paper px-6 py-6 text-center shadow-[0_30px_60px_-24px_rgba(92,64,51,.5)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-[16px] font-bold text-[#33291d]">
+              把 {removeTarget.profile.nickname} 移出房间？
+            </h3>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+              他会立刻离开，这个身份不能再加回当前房间。
+            </p>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRemoveTarget(null)}
+                className="flex-1 rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] py-2.5 text-[13px] text-ink-2"
+              >
+                再想想
+              </button>
+              <button
+                type="button"
+                disabled={removing}
+                onClick={() => void handleRemove()}
+                className="flex-1 rounded-2xl bg-brick py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
+              >
+                {removing ? '处理中…' : '移出'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ProfileDialog
+        open={profileOpen}
+        title="改我的资料"
+        description="改完房间里的人立刻能看到，也会用于之后选话题。"
+        policy={policy}
+        initial={{
+          nickname: selfMember?.profile.nickname ?? '',
+          interestTags: selfMember?.profile.interestTags ?? [],
+          bio: selfMember?.profile.bio ?? '',
+        }}
+        submitting={profileBusy}
+        serverError={profileError}
+        fieldErrors={profileFieldErrors}
+        submitLabel="保存"
+        submitNote={
+          <>
+            昵称在房间里唯一，
+            <br />
+            重复的话会被拒绝。
+          </>
+        }
+        onClose={() => setProfileOpen(false)}
+        onSubmit={handleSaveProfile}
+      />
     </div>
   )
 }

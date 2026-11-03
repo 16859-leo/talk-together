@@ -35,6 +35,8 @@ type Action =
   | { type: 'snapshot'; data: SnapshotData; cursor: number }
   | { type: 'event'; event: ServerMessage }
   | { type: 'local-message'; message: MemberMessage }
+  | { type: 'member-updated'; member: ActiveMember }
+  | { type: 'member-removed'; membershipId: string }
   | { type: 'reset' }
 
 function sortMessages(messages: Message[]): Message[] {
@@ -196,6 +198,20 @@ function reducer(state: RoomState, action: Action): RoomState {
         ...state,
         messages: upsertMessage(state.messages, action.message),
         cursor: Math.max(state.cursor, action.message.createdSequence),
+      }
+    case 'member-updated':
+      return {
+        ...state,
+        members: state.members.map((member) =>
+          member.id === action.member.id ? action.member : member,
+        ),
+      }
+    case 'member-removed':
+      return {
+        ...state,
+        members: state.members.filter(
+          (member) => member.membership?.id !== action.membershipId,
+        ),
       }
     case 'reset':
       return emptyState
