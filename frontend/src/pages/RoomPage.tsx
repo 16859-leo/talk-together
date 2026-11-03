@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { MemberCard } from '../features/room/MemberCard'
 import { ChatFeed } from '../features/chat/ChatFeed'
 import { Composer } from '../features/chat/Composer'
 import { InviteDialog } from '../features/room/InviteDialog'
 import { ApiError } from '../shared/api/client'
-import { sendMessage } from '../shared/api/room'
+import { getSelf, leaveRoom, sendMessage } from '../shared/api/room'
 import type { MemberMessage } from '../shared/api/types'
 import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
 import { demoCursor, demoSnapshot } from '../state/demo'
 import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
-import { devSession, loadSession } from '../state/session'
+import { clearSession, devSession, loadSession, type RoomSession } from '../state/session'
 
 const STATUS_TEXT: Record<StreamStatus, string | null> = {
   ticketing: '连接中…',
@@ -21,14 +21,28 @@ const STATUS_TEXT: Record<StreamStatus, string | null> = {
   failed: '连接不上服务器',
 }
 
+const END_TEXT: Record<string, { title: string; detail: string }> = {
+  MEMBER_REMOVED: { title: '你被移出了这个房间', detail: '房主结束了你的入场，可以等下一次邀请。' },
+  ROOM_UNAVAILABLE: { title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' },
+  MEMBERSHIP_INACTIVE: { title: '这次入房已经结束', detail: '从邀请链接重新进来就好。' },
+}
+
 export default function RoomPage() {
   const { roomId = '' } = useParams()
+  const navigate = useNavigate()
   const state = useRoomState()
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [status, setStatus] = useState<StreamStatus>('ticketing')
   const [notice, setNotice] = useState<string | null>(null)
+  const [ended, setEnded] = useState<{ title: string; detail: string } | null>(null)
+  const pendingSend = useRef<{ id: string; text: string } | null>(null)
+
+  const session = useMemo<RoomSession | null>(
+    () => loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null),
+    [roomId],
+  )
 
   // 后端未接时先用本地快照撑起界面；收到 WS 快照会被整体替换。
   useEffect(() => {
@@ -37,9 +51,33 @@ export default function RoomPage() {
     }
   }, [state.ready])
 
+  // 恢复身份：凭证还有效就继续，入房已结束就给出终态。
+  useEffect(() => {
+    if (!session) return undefined
+    let alive = true
+    getSelf(roomId, session.credential)
+      .then((data) => {
+        if (!alive) return
+        if (!data.member.membership) {
+          clearSession(roomId)
+          setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!alive || !(error instanceof ApiError)) return
+        const text = END_TEXT[error.code]
+        if (text) {
+          clearSession(roomId)
+          setEnded(text)
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [roomId, session])
+
   // 领票 → 建连 → 首帧快照 → 事件流。
   useEffect(() => {
-    const session = loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null)
     if (!session) return undefined
     const controller = new AbortController()
     const close = openRoomStream({
@@ -57,7 +95,7 @@ export default function RoomPage() {
       controller.abort()
       close()
     }
-  }, [roomId])
+  }, [roomId, session])
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -78,51 +116,102 @@ export default function RoomPage() {
   const capacity = state.room?.capacity ?? 5
   const statusText = STATUS_TEXT[status]
 
-  async function handleSend(text: string, mentions: 'ai'[]) {
-    const session = loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null)
-    setNotice(null)
+  async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
     if (!session) {
       setNotice('还没加入这个房间')
-      return
+      return false
     }
+    setNotice(null)
+
+    const reuse = pendingSend.current?.text === text ? pendingSend.current.id : null
+    const clientRequestId = reuse ?? crypto.randomUUID()
+
     try {
       const data = await sendMessage(
         roomId || 'room_demo',
-        { clientRequestId: crypto.randomUUID(), text, mentions },
+        { clientRequestId, text, mentions },
         session,
       )
+      pendingSend.current = null
       dispatch({ type: 'local-message', message: data.message })
       if (data.ai.status === 'rejected') {
         setNotice(`AI 没受理：${data.ai.error.message}`)
       } else if (data.ai.status === 'ignored') {
         setNotice('普通成员的 @AI 会被忽略，文字照常发出')
       }
+      return true
     } catch (error) {
-      if (error instanceof ApiError && error.status === 0) {
-        // 后端没起时保留可用的本地输入，避免演示中断
-        if (!self || !selfMember) return
-        const fallback: MemberMessage = {
-          id: `local_${Date.now()}`,
-          kind: 'member',
-          author: { memberId: self.memberId, nickname: selfMember.profile.nickname },
-          text,
-          clientRequestId: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-          createdSequence: state.cursor + 1,
-        }
-        dispatch({ type: 'local-message', message: fallback })
-        setNotice('后端未连接，这条只存在本地')
-        return
-      }
-      if (error instanceof ApiError) {
-        const wait = error.retryAfterMs
-          ? `（${Math.ceil(error.retryAfterMs / 1000)} 秒后可再试）`
-          : ''
-        setNotice(`${error.message}${wait}`)
-      } else {
+      if (!(error instanceof ApiError)) {
         setNotice('发送失败，稍后再试')
+        return false
+      }
+
+      // 网络问题：保留本地输入体验，同时记住这次的 ID 便于重试
+      if (error.status === 0) {
+        pendingSend.current = { id: clientRequestId, text }
+        if (self && selfMember) {
+          const fallback: MemberMessage = {
+            id: `local_${Date.now()}`,
+            kind: 'member',
+            author: { memberId: self.memberId, nickname: selfMember.profile.nickname },
+            text,
+            clientRequestId,
+            createdAt: new Date().toISOString(),
+            createdSequence: state.cursor + 1,
+          }
+          dispatch({ type: 'local-message', message: fallback })
+        }
+        setNotice('后端未连接，这条只存在本地')
+        return true
+      }
+
+      const retryable = error.status === 429 || error.status >= 500
+      pendingSend.current = retryable ? { id: clientRequestId, text } : null
+
+      const terminal = END_TEXT[error.code]
+      if (terminal) {
+        clearSession(roomId)
+        setEnded(terminal)
+        return false
+      }
+
+      const wait = error.retryAfterMs
+        ? `（${Math.ceil(error.retryAfterMs / 1000)} 秒后可再试）`
+        : ''
+      setNotice(`${error.message}${wait}`)
+      return false
+    }
+  }
+
+  async function handleLeave() {
+    setLeaveOpen(false)
+    if (session) {
+      try {
+        await leaveRoom(roomId || 'room_demo', session)
+      } catch {
+        /* 退出失败也把本地收干净，避免卡在房间里 */
       }
     }
+    clearSession(roomId)
+    navigate('/')
+  }
+
+  if (ended) {
+    return (
+      <div className="page-bg paper grid min-h-screen place-items-center px-6">
+        <div className="relative z-10 w-full max-w-[440px] rounded-[32px] border-[1.5px] border-rule bg-paper px-8 py-10 text-center shadow-[0_30px_60px_-34px_rgba(92,64,51,.45)]">
+          <h1 className="text-[20px] font-bold text-[#33291d]">{ended.title}</h1>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-2">{ended.detail}</p>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mt-6 rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
+          >
+            回到首页
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (!state.ready) {
@@ -295,7 +384,7 @@ export default function RoomPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setLeaveOpen(false)}
+                onClick={() => void handleLeave()}
                 className="flex-1 rounded-2xl bg-brick py-2.5 text-[13px] font-semibold text-white"
               >
                 退出房间

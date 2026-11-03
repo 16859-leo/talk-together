@@ -1,7 +1,9 @@
 import { request } from './client'
 import type {
   ConnectionTicketData,
+  LeaveData,
   RoomEntryData,
+  SelfData,
   SendMessageData,
   SendMessageBody,
 } from './types'
@@ -36,13 +38,20 @@ export async function sendMessage(
   })
 }
 
+export interface ProfileInput {
+  nickname: string
+  interestTags: string[]
+  bio?: string
+}
+
 export interface JoinBody {
   clientRequestId: string
   bootstrapToken: string
   inviteCode?: string
-  profile: { nickname: string; interestTags: string[]; bio?: string }
+  profile: ProfileInput
 }
 
+/** 首次加入。已在房间里再次调用会复用原 membership（200）。 */
 export async function joinRoom(roomId: string, body: JoinBody): Promise<RoomEntryData> {
   return request<RoomEntryData>(`/rooms/${roomId}/members`, { method: 'POST', body })
 }
@@ -50,9 +59,22 @@ export async function joinRoom(roomId: string, body: JoinBody): Promise<RoomEntr
 export interface CreateRoomBody {
   clientRequestId: string
   bootstrapToken: string
-  profile: { nickname: string; interestTags: string[]; bio?: string }
+  profile: ProfileInput
 }
 
 export async function createRoom(body: CreateRoomBody): Promise<RoomEntryData> {
   return request<RoomEntryData>('/rooms', { method: 'POST', body })
+}
+
+/** 只带凭证，用来恢复本人身份与本次入房状态；已退出时 membership 为 null。 */
+export async function getSelf(roomId: string, credential: string): Promise<SelfData> {
+  return request<SelfData>(`/rooms/${roomId}/members/me`, { credential })
+}
+
+export async function leaveRoom(roomId: string, auth: Auth): Promise<LeaveData> {
+  return request<LeaveData>(`/rooms/${roomId}/members/me`, {
+    method: 'DELETE',
+    credential: auth.credential,
+    membershipId: auth.membershipId,
+  })
 }

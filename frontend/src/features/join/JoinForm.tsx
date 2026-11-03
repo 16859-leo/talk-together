@@ -12,7 +12,7 @@ interface JoinFormProps {
   submitting: boolean
   serverError: string | null
   fieldErrors: Record<string, string>
-  onSubmit: (values: JoinValues) => void
+  onSubmit: (values: JoinValues) => void | Promise<void>
 }
 
 const SUGGESTIONS = ['电影', '旅行', '咖啡', '摄影', '游戏', '烘焙', '猫']
@@ -129,7 +129,9 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
           ))}
         </div>
         {touched && tagsTooFew && (
-          <p className="mt-1 text-[11.5px] text-brick">先选一个兴趣，导播好帮你起话题</p>
+          <p className="mt-1 text-[11.5px] text-brick">
+            {fieldErrors['/profile/interestTags'] ?? '先选一个兴趣，导播好帮你起话题'}
+          </p>
         )}
       </div>
 

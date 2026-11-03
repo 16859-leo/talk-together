@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { JoinForm, type JoinValues } from '../features/join/JoinForm'
-import { getClientConfig } from '../shared/api/client'
+import { ApiError, getClientConfig } from '../shared/api/client'
+import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { Avatar } from '../shared/ui/Avatar'
+import { clearBootstrap, loadBootstrap, loadSession, saveSession } from '../state/session'
 
 const FALLBACK_POLICY: ValidationPolicy = {
   nickname: { minLength: 1, maxLength: null },
@@ -20,13 +22,26 @@ const FACES = [
   { id: 'member_mi', initial: '米' },
 ]
 
-/** 入房页：用契约的 client-config 做校验约束；真实 POST 待接后端。 */
+const ERROR_TEXT: Record<string, string> = {
+  ROOM_FULL: '房间坐满了，等有人退出再来',
+  NICKNAME_TAKEN: '这个昵称已经有人用了，换一个吧',
+  INVITATION_INVALID: '邀请链接无效或已经失效',
+  ROOM_UNAVAILABLE: '房间不存在，或者已经关闭了',
+  MEMBER_REMOVED: '你被移出了这个房间，不能再加入',
+  BOOTSTRAP_CONFLICT: '这次入房的凭证已经用掉了，重新提交一次就好',
+  SERVICE_UNAVAILABLE: '服务暂时不可用，稍后再试',
+  NETWORK: '网络不太稳，稍后再试',
+}
+
 export default function JoinPage() {
   const { roomId = 'room_demo' } = useParams()
   const [search] = useSearchParams()
   const navigate = useNavigate()
   const [policy, setPolicy] = useState<ValidationPolicy | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [existing, setExisting] = useState(false)
 
   const inviteCode = search.get('inviteCode')
   const hostName = roomId === 'room_demo' ? '小林' : roomId
@@ -36,18 +51,59 @@ export default function JoinPage() {
     getClientConfig().then((config) => {
       if (alive) setPolicy(config.validation)
     })
+    setExisting(Boolean(loadSession(roomId)))
     return () => {
       alive = false
     }
-  }, [])
+  }, [roomId])
 
-  function handleSubmit(_values: JoinValues) {
+  async function handleSubmit(values: JoinValues) {
     setSubmitting(true)
-    // TODO(api): POST /rooms/{roomId}/members（bootstrapToken + clientRequestId）
-    window.setTimeout(() => {
-      setSubmitting(false)
+    setError(null)
+    setFieldErrors({})
+
+    const bootstrap = loadBootstrap(roomId)
+    try {
+      const data = await joinRoom(roomId, {
+        clientRequestId: bootstrap.clientRequestId,
+        bootstrapToken: bootstrap.token,
+        inviteCode: inviteCode ?? undefined,
+        profile: {
+          nickname: values.nickname,
+          interestTags: values.interestTags,
+          bio: values.bio,
+        },
+      })
+
+      const membership = data.member.membership
+      if (!membership) {
+        throw new ApiError({ code: 'MEMBERSHIP_INACTIVE', status: 403, message: '这次入房没有生效' })
+      }
+
+      saveSession(roomId, {
+        credential: data.memberCredential,
+        membershipId: membership.id,
+        memberId: data.member.id,
+      })
+      clearBootstrap(roomId)
       navigate(`/rooms/${roomId}`, { replace: true })
-    }, 400)
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        if (caught.code === 'BOOTSTRAP_CONFLICT') {
+          clearBootstrap(roomId)
+        }
+        if (caught.fieldErrors.length > 0) {
+          setFieldErrors(
+            Object.fromEntries(caught.fieldErrors.map((item) => [item.path, item.message])),
+          )
+        }
+        setError(ERROR_TEXT[caught.code] ?? caught.message)
+      } else {
+        setError('没进去，稍后再试')
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -81,7 +137,7 @@ export default function JoinPage() {
             就差你了
           </h1>
           <p className="mt-4 max-w-[34ch] text-[14.5px] leading-relaxed text-ink-2">
-            小林 在房间里等你。填好名字和兴趣，我们就能开始聊。
+            {hostName} 在房间里等你。填好名字和兴趣，我们就能开始聊。
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-2.5 text-[13px] text-muted">
@@ -111,13 +167,35 @@ export default function JoinPage() {
         </section>
 
         <section>
-          <JoinForm
-            policy={policy ?? FALLBACK_POLICY}
-            submitting={submitting}
-            serverError={null}
-            fieldErrors={{}}
-            onSubmit={handleSubmit}
-          />
+          {existing ? (
+            <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
+              <h2 className="text-[17px] font-bold text-[#33291d]">你已经在这个房间里了</h2>
+              <p className="mt-1.5 text-[12.5px] text-muted">刷新或换标签页都不会变成新成员。</p>
+              <div className="mt-5 flex justify-center gap-2.5">
+                <Link
+                  to={`/rooms/${roomId}`}
+                  className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
+                >
+                  回到房间
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setExisting(false)}
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
+                >
+                  换一个昵称
+                </button>
+              </div>
+            </div>
+          ) : (
+            <JoinForm
+              policy={policy ?? FALLBACK_POLICY}
+              submitting={submitting}
+              serverError={error}
+              fieldErrors={fieldErrors}
+              onSubmit={handleSubmit}
+            />
+          )}
         </section>
       </div>
     </div>

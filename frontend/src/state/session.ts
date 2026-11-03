@@ -4,9 +4,24 @@ export interface RoomSession {
   memberId: string
 }
 
-/** 凭证按房间保存在本地，关房或退出后清理。 */
+/** 首次提交用的引导凭证：同一房间、同一次入房重试时复用，成功后清理。 */
+export interface PendingBootstrap {
+  token: string
+  clientRequestId: string
+}
+
 function sessionKey(roomId: string) {
   return `tt:${roomId}:session`
+}
+
+function bootstrapKey(roomId: string) {
+  return `tt:${roomId}:bootstrap`
+}
+
+function randomHex(bytes: number): string {
+  const buffer = new Uint8Array(bytes)
+  crypto.getRandomValues(buffer)
+  return Array.from(buffer, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 export function loadSession(roomId: string): RoomSession | null {
@@ -38,8 +53,42 @@ export function clearSession(roomId: string) {
 }
 
 /**
- * 开发期占位：还没接入真实入房时，用一个固定身份连本地 Mock。
- * 接上 POST /rooms/{id}/members 后删掉这个函数。
+ * 取本次入房的引导凭证：已存在就复用，保证重试和并行标签页拿到同一份。
+ * 成功后必须 clearBootstrap，否则下次入房会被服务端判成 BOOTSTRAP_CONFLICT。
+ */
+export function loadBootstrap(roomId: string): PendingBootstrap {
+  try {
+    const raw = localStorage.getItem(bootstrapKey(roomId))
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PendingBootstrap>
+      if (parsed.token && parsed.clientRequestId) return parsed as PendingBootstrap
+    }
+  } catch {
+    /* 读不出来就重建一份 */
+  }
+  const fresh: PendingBootstrap = {
+    token: randomHex(32),
+    clientRequestId: crypto.randomUUID(),
+  }
+  try {
+    localStorage.setItem(bootstrapKey(roomId), JSON.stringify(fresh))
+  } catch {
+    /* 忽略 */
+  }
+  return fresh
+}
+
+export function clearBootstrap(roomId: string) {
+  try {
+    localStorage.removeItem(bootstrapKey(roomId))
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/**
+ * 开发期占位：还没走真实入房时，用一个固定身份连本地 Mock。
+ * 真实入房接上后，生产构建里不会走到这里。
  */
 export function devSession(): RoomSession {
   return {

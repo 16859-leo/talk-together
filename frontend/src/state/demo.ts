@@ -55,7 +55,8 @@ const room: Room = {
   currentTopic: topic,
   invitation: {
     inviteCode: 'ff3a0000000000000000000000000000000000000000000000000000000000',
-    joinPath: '/join/room_demo?inviteCode=ff3a0000',
+    joinPath:
+      '/join/room_demo?inviteCode=ff3a0000000000000000000000000000000000000000000000000000000000',
   },
 }
 

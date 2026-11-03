@@ -2,7 +2,7 @@
 
 `搭个话` 的前端（Vite + React + TypeScript + Tailwind v4）。
 
-当前进度：**M2 进行中**。WebSocket 链路（领票 → 建连 → 首帧快照 → 增量事件）和发送接口已经接上，并对 `contracts` 的本地 Mock 跑通；入房与创建房间的写接口还没接，演示时用本地快照 + 开发态身份。
+当前进度：**M2 基本完成**。入房提交、WebSocket 事件流、发送与幂等重试都已接上，并对 `contracts` 的本地 Mock 跑通；创建房间与成员管理还没接。
 
 ## 启动
 
@@ -27,8 +27,8 @@ npm run mock:ws --prefix ../contracts -- host-stream
 | 路由 | 页面 | 状态 |
 | --- | --- | --- |
 | `/` | 开场 | 全屏标题 talk together |
-| `/join/:roomId?inviteCode=` | 入房 | 表单校验来自 `client-config`；提交暂时直接跳房间 |
-| `/rooms/:roomId` | 房间 | 接 WS 事件流；发送走 `POST /messages` |
+| `/join/:roomId?inviteCode=` | 入房 | 真实提交 `POST /rooms/{id}/members`，含引导凭证与错误映射 |
+| `/rooms/:roomId` | 房间 | WS 事件流 + 发送 + 退出；已有关房/被移出终态 |
 
 ## 目录
 
@@ -40,33 +40,32 @@ src/
 │   ├── join/JoinForm        昵称、兴趣标签、简介 + 校验
 │   ├── room/MemberCard      成员名片（角色色、标签、掉线倒计时）
 │   ├── room/InviteDialog    二维码 + 复制链接
-│   └── chat/ChatFeed、Composer
+│   └── chat/ChatFeed、Composer（失败会把文字还回去）
 ├── state/
 │   ├── roomStore.ts         reducer + useSyncExternalStore，含游标去重
-│   ├── session.ts           房间级凭证存取（localStorage）
+│   ├── session.ts           成员凭证与入房引导凭证（localStorage）
 │   └── demo.ts              本地快照，作为后端未起时的兜底
 └── shared/
     ├── api/client.ts        统一信封、ApiError、Bearer 与 X-Membership-Id
-    ├── api/room.ts          票据、发消息、加入、创建
+    ├── api/room.ts          票据、发消息、加入、创建、getSelf、退出
     ├── realtime/connection.ts  领票 → 建连 → 快照 → 事件；断线重连续票
     └── ui/Avatar、personColor
 ```
 
 ## 已实现的协议行为
 
-- 每次连接（含重连）单独领取一次性票据，使用服务端返回的 `webSocketUrl`；
-- 首帧 `room.snapshot` 整体替换状态并以 `cursor` 起算；
-- 之后只接受 `sequence > cursor` 的事件，跳号正常、重复丢弃；
-- 断线退避重连 0.5s → 5s，重连前重新领票；
-- 发送带 `clientRequestId`，回执里的 `ai.status` 会区分「未受理 / 被忽略」，失败按 `retryAfterMs` 提示；
-- 后端不可达时退回本地发送，界面不假死。
+- **入房**：每次提交带 `bootstrapToken` + `clientRequestId`（存在 localStorage，重试和并行标签页复用同一份），成功后保存 `memberCredential` 与 `membershipId` 并清掉引导凭证；`BOOTSTRAP_CONFLICT` 会重建后允许重试；
+- **错误映射**：满员、昵称重复、邀请失效、被移出、字段校验都映射到具体提示，`fieldErrors` 会落到对应输入项；
+- **凭证恢复**：进房间先用 `getSelf` 校验，`membership: null` 时给出「这次入房已经结束」终态；
+- **实时**：每次连接（含重连）单独领票，首帧快照整体替换，之后只接受 `sequence > cursor`；
+- **发送**：带 `clientRequestId`，失败时复用同一个 ID 重试；`ai.status` 区分未受理/被忽略，`retryAfterMs` 会显示等待时间；
+- **退出**：先调 `DELETE /members/me`，再清本地凭证回首页。
 
 ## 还没做的
 
-- 入房与创建房间的真实提交（`bootstrapToken` + `clientRequestId` 幂等、多标签页共用一份待提交凭证）；
-- 发送失败后的重试策略（目前每次发送生成新 ID，尚未复用上一次的 ID 重试）；
-- 改资料、移出成员、关房，以及被移出/关房/满员的终态页；
-- 断线期间的时间轴占位与「重连中」更细的状态提示；
+- 创建房间页（`POST /rooms`）与房主创建流程；
+- 改资料、移出成员、关闭房间；
+- 断线期间的消息占位与更细的重连状态；
 - 单元测试：reducer 回放 `contracts/examples/ws/*` 的 12 个场景。
 
 ## 契约
