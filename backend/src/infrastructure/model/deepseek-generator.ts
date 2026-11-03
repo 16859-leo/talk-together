@@ -25,7 +25,7 @@ import { CapabilityError } from '../zhihu/types.ts';
 import type { ZhihuTopicSource } from '../zhihu/topic-source.ts';
 import type { TopicCandidate } from '../zhihu/types.ts';
 import { SYSTEM_PROMPT, buildUserPrompt, commonInterestTags } from './prompts.ts';
-import { MAX_TEXT_LENGTH, analyzeOutput, cleanOutput, rejectOutput } from './sanitize.ts';
+import { MAX_TEXT_LENGTH, MIN_TEXT_LENGTH, analyzeOutput, cleanOutput, rejectOutput } from './sanitize.ts';
 import type { GenerationChunk, GenerationRequest, TextGenerator } from './types.ts';
 
 export interface DeepSeekGeneratorOptions {
@@ -195,9 +195,13 @@ export class DeepSeekTextGenerator implements TextGenerator {
         boundaryText.length > 0 && finalText.startsWith(boundaryText)
           ? finalText.slice(boundaryText.length)
           : finalText;
+      // 检索后追加的内容还要自己站得住：只补一个句号、几个标点或单字补尾，
+      // 都不能算「基于检索结果说了一句话」（长度与「有实义字符」两道都查）。
+      const postText = deliveredAfterSelection.trim();
+      const postUsable =
+        postText.length >= MIN_TEXT_LENGTH && /[\p{L}\p{N}]/u.test(postText);
       const topicMissing =
-        request.purpose === 'topic' &&
-        (state.selected === null || deliveredAfterSelection.trim().length === 0);
+        request.purpose === 'topic' && (state.selected === null || !postUsable);
 
       if (rejected === null && !topicMissing) {
         // 草稿补发：正常路径草稿已在文本循环里先行发出，这里只作防御

@@ -24,6 +24,9 @@
 /** 输出硬上限。prompt 要求 55 字以内，超出按硬裁剪处理。 */
 export const MAX_TEXT_LENGTH = 70;
 
+/** 可交付文本的最短长度；低于它视为「没说话」，不能算完成。 */
+export const MIN_TEXT_LENGTH = 6;
+
 /** 元话语线索的搜索范围，超出则认为冒号属于正文。 */
 const CUE_SEARCH_WINDOW = 30;
 /** 冒号后至少要有这么多字才认定前半段是元话语。 */
@@ -187,7 +190,7 @@ export function rejectOutput(
   text: string,
   recentMessages: readonly { readonly text: string }[] = [],
 ): RejectReason | null {
-  if (text.length < 6) return 'TOO_SHORT';
+  if (text.length < MIN_TEXT_LENGTH) return 'TOO_SHORT';
   // 「昵称：...」形式的转录
   if (/^[^\s:：]{1,8}[:：]/.test(text)) return 'LOOKS_LIKE_TRANSCRIPT';
 

@@ -660,3 +660,37 @@ test('P2 事件顺序：消费者中途暂停，检索前文本也不会被算�
     '检索后没有任何正文，暂停消费不应改变这个判断',
   );
 });
+
+// ---------- 第六轮 review：检索后内容的质量校验 ----------
+
+test('P2 检索后只补一个句号：没有实质正文，判未完成', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: mockModelStages([
+      textThenToolCallChunks(MUSIC_TEXT, 'c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks(['。'], 'stop'),
+    ]),
+    maxRetries: 0,
+  });
+
+  await assert.rejects(
+    () => collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '标点补尾不能算「基于检索结果说了一句话」',
+  );
+});
+
+test('P2 检索后只补一串标点：长度够但无实义字符，仍判未完成', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: mockModelStages([
+      textThenToolCallChunks(MUSIC_TEXT, 'c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks(['。。。。。。'], 'stop'),
+    ]),
+    maxRetries: 0,
+  });
+
+  await assert.rejects(
+    () => collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '纯标点不构成实质正文',
+  );
+});

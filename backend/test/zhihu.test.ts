@@ -457,3 +457,48 @@ test('P2 共同话题：缓存命中时轮转候选，并排除当前话题', as
   );
   assert.equal(fake.searchCalls, 1, '缓存期内不应重复访问上游');
 });
+
+// ---------- 第六轮 review P2：搜索缓存回收 ----------
+
+test('P2 搜索缓存：过期条目在下次检索时被回收', async () => {
+  const fake = new FakeSource([], [
+    {
+      title: '旅行中遇到过什么难忘的经历？',
+      contentText: '路上遇到的人、临时改的路线，都可以聊。',
+      url: 'https://z.com/a',
+      authorName: null,
+    },
+  ]);
+  let clock = 0;
+  const source = new ZhihuTopicSource(fake, { now: () => clock, searchCacheTtlMs: 1_000 });
+
+  for (let i = 0; i < 30; i += 1) {
+    await source.searchCommonTopics(`关键词${i}`, { count: 1 });
+  }
+  assert.equal(source.stats.searchCacheEntries, 30);
+
+  // 全部过期后再次检索：旧条目应被清掉，只剩本次这条
+  clock += 5_000;
+  await source.searchCommonTopics('新关键词', { count: 1 });
+  assert.equal(source.stats.searchCacheEntries, 1, '过期缓存条目应被回收');
+});
+
+test('P2 搜索缓存：条目数不超过容量上限', async () => {
+  const fake = new FakeSource([], [
+    {
+      title: '旅行中遇到过什么难忘的经历？',
+      contentText: '路上遇到的人、临时改的路线，都可以聊。',
+      url: 'https://z.com/a',
+      authorName: null,
+    },
+  ]);
+  const source = new ZhihuTopicSource(fake, { searchCacheTtlMs: 60_000 });
+
+  for (let i = 0; i < 130; i += 1) {
+    await source.searchCommonTopics(`长尾关键词${i}`, { count: 1 });
+  }
+  assert.ok(
+    source.stats.searchCacheEntries <= 100,
+    `缓存条目应受限，实际 ${source.stats.searchCacheEntries}`,
+  );
+});

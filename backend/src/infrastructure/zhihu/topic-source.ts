@@ -31,6 +31,12 @@ interface CacheEntry<T> {
 /** 截断过长正文，避免把大段原文塞进模型上下文。 */
 const MAX_CONTENT_LENGTH = 120;
 
+/**
+ * 搜索缓存条目上限。冷场换话题会不断产生新关键词，缓存只靠 TTL 判断命中
+ * 而不清理的话会无限增长；这里在每次写入前回收过期项，并保留容量上限。
+ */
+const MAX_SEARCH_CACHE_ENTRIES = 100;
+
 function clip(text: string, max = MAX_CONTENT_LENGTH): string {
   const trimmed = text.trim().replace(/\s+/g, ' ');
   if (trimmed.length <= max) return trimmed;
@@ -93,8 +99,31 @@ export class ZhihuTopicSource {
     this.#now = options.now ?? Date.now;
   }
 
-  get stats(): { readonly hotCalls: number; readonly searchCalls: number } {
-    return { hotCalls: this.#upstreamHotCalls, searchCalls: this.#upstreamSearchCalls };
+  get stats(): {
+    readonly hotCalls: number;
+    readonly searchCalls: number;
+    readonly searchCacheEntries: number;
+  } {
+    return {
+      hotCalls: this.#upstreamHotCalls,
+      searchCalls: this.#upstreamSearchCalls,
+      searchCacheEntries: this.#searchCache.size,
+    };
+  }
+
+  /**
+   * 回收搜索缓存：先删过期项，再按插入顺序淘汰最旧的，保证条目数不超过上限。
+   * 房间间共享的缓存会随不同关键词持续增长，不回收会永久积累历史查询。
+   */
+  #pruneSearchCache(now: number): void {
+    for (const [key, entry] of this.#searchCache) {
+      if (entry.expiresAt <= now) this.#searchCache.delete(key);
+    }
+    while (this.#searchCache.size >= MAX_SEARCH_CACHE_ENTRIES) {
+      const oldest = this.#searchCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.#searchCache.delete(oldest);
+    }
   }
 
   /**
@@ -118,9 +147,13 @@ export class ZhihuTopicSource {
       return this.#select(pickFallbackTopics(options.interestTags ?? [], count), count, excluded, 'search');
     }
 
+    const now = this.#now();
+    // 每次检索前回收：过期项 + 超容量项，避免共享缓存随关键词无限增长。
+    this.#pruneSearchCache(now);
+
     const key = `${normalized}::${count}`;
     const cached = this.#searchCache.get(key);
-    if (cached !== undefined && cached.expiresAt > this.#now()) {
+    if (cached !== undefined && cached.expiresAt > now) {
       // 命中缓存也要轮转并排除当前话题，否则 10 分钟内会反复选中同一条。
       return this.#select(cached.value, count, excluded, 'search');
     }
