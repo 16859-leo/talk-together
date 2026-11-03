@@ -72,12 +72,13 @@ export default function JoinPage() {
     }
   }, [roomId])
 
-  async function handleSubmit(values: JoinValues) {
+  async function handleSubmit(values: JoinValues, options?: { replay?: boolean }) {
     setSubmitting(true)
     setError(null)
     setFieldErrors({})
     setConflict(false)
-    setLastValues(values)
+    // 重放原请求时，lastValues 要保留用户最新的资料，撤回时才有内容可发
+    if (!options?.replay) setLastValues(values)
 
     try {
       // 同一房间的入房提交跨标签页串行：后提交的标签页在锁内会看到前一个的结果
@@ -165,7 +166,11 @@ export default function JoinPage() {
           setError('上一次入房可能已经成功，但没收到回执')
         } else {
           // 服务端已经明确拒绝，这次请求不再重放
-          if (isDefinitiveFailure(caught.code)) clearPendingJoin(roomId)
+          if (isDefinitiveFailure(caught.code)) {
+            clearPendingJoin(roomId)
+            // 重放被拒：退出阻挡面板，回到可以编辑资料的表单
+            if (options?.replay) setPendingBlock(null)
+          }
           setError(errorText(caught.code, caught.message))
         }
       } else {
@@ -239,7 +244,7 @@ export default function JoinPage() {
                 <button
                   type="button"
                   disabled={submitting}
-                  onClick={() => void handleSubmit(pendingBlock.profile)}
+                  onClick={() => void handleSubmit(pendingBlock.profile, { replay: true })}
                   className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
                 >
                   {submitting ? '确认中…' : '用原资料重试'}

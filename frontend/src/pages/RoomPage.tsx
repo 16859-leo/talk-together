@@ -138,6 +138,8 @@ export default function RoomPage() {
   /** 终态统一出口：决定文案与身份去留，并停掉连接、清空房间数据 */
   function endWith(reason: TerminalReason) {
     const outcome = resolveTerminal(reason)
+    // 终态页不会卸载 RoomPage：必须显式作废令牌，挡住迟到的 HTTP 回执
+    epochRef.current = expireEpoch(epochRef.current)
     setTerminal(true)
     if (outcome.identity === 'clear') clearSession(roomId)
     else clearMembership(roomId)
@@ -485,6 +487,7 @@ export default function RoomPage() {
 
   async function handleSaveProfile(values: JoinValues) {
     if (!session || !activeSession) return
+    const capturedEpoch = epochRef.current
     setProfileBusy(true)
     setProfileError(null)
     setProfileFieldErrors({})
@@ -498,6 +501,9 @@ export default function RoomPage() {
         },
         activeSession,
       )
+
+      // 已经切走房间或进入终态：这条回执不能改动当前会话
+      if (!isSameEpoch(epochRef.current, capturedEpoch)) return
 
       // 回执对不上（Mock 固定示例）时，用本地这份兜底，别让界面弹回旧资料
       const echoed = data.member
@@ -531,6 +537,7 @@ export default function RoomPage() {
       setProfileOpen(false)
       setNotice('资料已更新，房间里的人都看到了')
     } catch (error) {
+      if (!isSameEpoch(epochRef.current, capturedEpoch)) return
       if (error instanceof ApiError) {
         setProfileError(error.message)
         if (error.fieldErrors.length > 0) {
