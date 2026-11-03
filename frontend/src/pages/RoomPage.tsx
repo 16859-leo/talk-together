@@ -13,6 +13,7 @@ import { openRoomStream, type StreamStatus } from '../shared/realtime/connection
 import { demoCursor, demoSnapshot } from '../state/demo'
 import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
 import { clearSession, devSession, loadSession, type RoomSession } from '../state/session'
+import { formatLeft, useNow } from '../shared/ui/useNow'
 
 const FALLBACK_POLICY: ValidationPolicy = {
   nickname: { minLength: 1, maxLength: null },
@@ -153,6 +154,11 @@ export default function RoomPage() {
   const canMention = self?.role === 'host'
   const onlineCount = state.members.filter((m) => m.membership?.presence !== 'offline').length
   const capacity = state.room?.capacity ?? 5
+  const now = useNow()
+  const hostLeft = formatLeft(state.room?.hostRecoveryExpiresAt ?? null, now)
+  const hostReconnecting = state.room?.status === 'host_reconnecting'
+  const reconnecting = status === 'reconnecting' || status === 'failed'
+  const composerDisabled = status === 'reconnecting' || status === 'failed' || status === 'closed'
   const statusText = STATUS_TEXT[status]
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
@@ -395,10 +401,26 @@ export default function RoomPage() {
 
         <main className="mt-4 grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_392px] lg:gap-5">
           <section className="flex min-h-[520px] flex-col rounded-[34px_38px_32px_40px] border border-rule-soft bg-paper p-5 shadow-soft lg:min-h-0">
+            {hostReconnecting && (
+              <div className="mb-2.5 flex items-start gap-2 rounded-2xl border border-[rgba(192,127,80,.45)] bg-[rgba(232,168,124,.16)] px-3.5 py-2 text-[12px] leading-relaxed text-[#8a5a34]">
+                <span className="mt-[6px] block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-coral" />
+                <span>
+                  房主掉线了，座位保留
+                  {hostLeft !== null ? ` ${hostLeft} 秒` : ''}
+                  ，超时会自动关房；这期间新的自动话题和邀答暂停。
+                </span>
+              </div>
+            )}
+            {reconnecting && (
+              <div className="mb-2.5 flex items-center gap-2 rounded-2xl border border-[rgba(124,185,168,.4)] bg-[rgba(124,185,168,.12)] px-3.5 py-2 text-[12px] text-[#3f6156]">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage-deep" />
+                {status === 'failed' ? '连接不上服务器，正在重试…' : '连接断了，正在重连…'}
+              </div>
+            )}
             <h2 className="pb-2.5 text-[16px] font-bold">聊天</h2>
             <hr className="rule" />
             <ChatFeed messages={state.messages} />
-            <Composer canMention={canMention} onSend={handleSend} />
+            <Composer canMention={canMention} disabled={composerDisabled} onSend={handleSend} />
             {notice && (
               <p className="mt-1 rounded-lg bg-[rgba(177,105,74,.1)] px-3 py-1.5 text-[11.5px] text-brick">
                 {notice}
@@ -420,6 +442,7 @@ export default function RoomPage() {
                     key={member.id}
                     member={member}
                     isSelf={member.id === self?.memberId}
+                    now={now}
                     canRemove={
                       Boolean(canMention) && member.role !== 'host' && member.id !== self?.memberId
                     }

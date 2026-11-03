@@ -7,21 +7,23 @@ interface MemberCardProps {
   isSelf: boolean
   canRemove?: boolean
   onRemove?: (member: ActiveMember) => void
+  /** 外部传入的「现在」，让倒计时每秒会走 */
+  now?: number
 }
 
-function countdown(iso: string | null): string | null {
+function countdown(iso: string | null, now: number): string | null {
   if (!iso) return null
-  const left = new Date(iso).getTime() - Date.now()
+  const left = new Date(iso).getTime() - now
   if (left <= 0) return '0:00'
   const seconds = Math.floor(left / 1000)
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function MemberCard({ member, isSelf, canRemove, onRemove }: MemberCardProps) {
+export function MemberCard({ member, isSelf, canRemove, onRemove, now = Date.now() }: MemberCardProps) {
   const color = personColor(member.id)
   const presence = member.membership?.presence ?? 'connecting'
   const offline = presence === 'offline'
-  const left = offline ? countdown(member.membership?.recoveryExpiresAt ?? null) : null
+  const left = offline ? countdown(member.membership?.recoveryExpiresAt ?? null, now) : null
 
   return (
     <div
