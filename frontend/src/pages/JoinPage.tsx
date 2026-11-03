@@ -5,6 +5,7 @@ import { ApiError, getClientConfig } from '../shared/api/client'
 import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { Avatar } from '../shared/ui/Avatar'
+import { DEMO_INVITE_PATH } from '../state/demo'
 import { clearBootstrap, loadBootstrap, loadSession, saveSession } from '../state/session'
 
 const FALLBACK_POLICY: ValidationPolicy = {
@@ -23,6 +24,7 @@ const FACES = [
 ]
 
 const ERROR_TEXT: Record<string, string> = {
+  VALIDATION_ERROR: '资料没通过校验；如果都填好了，看看邀请码是否完整',
   ROOM_FULL: '房间坐满了，等有人退出再来',
   NICKNAME_TAKEN: '这个昵称已经有人用了，换一个吧',
   INVITATION_INVALID: '邀请链接无效或已经失效',
@@ -43,7 +45,10 @@ export default function JoinPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [existing, setExisting] = useState(false)
 
-  const inviteCode = search.get('inviteCode')
+  const inviteCode = search.get('inviteCode') ?? ''
+  const codeMissing = inviteCode.length === 0
+  const codeTruncated = !codeMissing && inviteCode.length < 32
+  const linkBroken = codeMissing || codeTruncated
   const hostName = roomId === 'room_demo' ? '小林' : roomId
 
   useEffect(() => {
@@ -67,7 +72,7 @@ export default function JoinPage() {
       const data = await joinRoom(roomId, {
         clientRequestId: bootstrap.clientRequestId,
         bootstrapToken: bootstrap.token,
-        inviteCode: inviteCode ?? undefined,
+        inviteCode,
         profile: {
           nickname: values.nickname,
           interestTags: values.interestTags,
@@ -162,7 +167,9 @@ export default function JoinPage() {
           <p className="mt-4 flex items-center gap-2 text-[12.5px] text-muted">
             <i className="block h-1.5 w-1.5 rounded-full bg-coral" />
             还差 1 个人，人满就锁座
-            {inviteCode && <span className="text-faint">· 邀请码已识别</span>}
+            {!linkBroken && <span className="text-faint">· 邀请码已识别</span>}
+            {codeMissing && <span className="text-brick">· 这个地址没有邀请码</span>}
+            {codeTruncated && <span className="text-brick">· 邀请码看起来不完整</span>}
           </p>
         </section>
 
@@ -185,6 +192,29 @@ export default function JoinPage() {
                 >
                   换一个昵称
                 </button>
+              </div>
+            </div>
+          ) : linkBroken ? (
+            <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
+              <h2 className="text-[17px] font-bold text-[#33291d]">邀请链接不完整</h2>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                {codeMissing
+                  ? '这个地址里没有邀请码。请用房主发来的完整链接，或者扫他分享的二维码。'
+                  : '链接里的邀请码被截断了，让房主重新发一次就好。'}
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                <Link
+                  to={DEMO_INVITE_PATH}
+                  className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
+                >
+                  用演示邀请链接进入
+                </Link>
+                <Link
+                  to="/"
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2"
+                >
+                  回首页
+                </Link>
               </div>
             </div>
           ) : (

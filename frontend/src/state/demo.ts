@@ -11,6 +11,11 @@ import type {
 const NOW = '2026-11-03T13:41:00.000Z'
 const RECOVERY_ENDS_AT = new Date(Date.now() + 42_000).toISOString()
 
+/** 演示用的邀请码：契约里的 Secret 是 64 位十六进制。 */
+export const DEMO_INVITE_CODE =
+  'ff3a0000000000000000000000000000000000000000000000000000000000'
+export const DEMO_INVITE_PATH = `/join/room_demo?inviteCode=${DEMO_INVITE_CODE}`
+
 function member(params: {
   id: string
   role: 'host' | 'member'
@@ -54,9 +59,8 @@ const room: Room = {
   hostRecoveryExpiresAt: null,
   currentTopic: topic,
   invitation: {
-    inviteCode: 'ff3a0000000000000000000000000000000000000000000000000000000000',
-    joinPath:
-      '/join/room_demo?inviteCode=ff3a0000000000000000000000000000000000000000000000000000000000',
+    inviteCode: DEMO_INVITE_CODE,
+    joinPath: DEMO_INVITE_PATH,
   },
 }
 

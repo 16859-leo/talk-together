@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { DEMO_INVITE_PATH } from '../state/demo'
 
 export default function HomePage() {
   return (
@@ -48,7 +49,7 @@ export default function HomePage() {
 
             <div className="hero-enter hero-enter--cta mt-8 flex flex-col items-center justify-center gap-3 sm:mt-10 sm:flex-row">
               <Link
-                to="/join/room_demo"
+                to={DEMO_INVITE_PATH}
                 className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] bg-[#3f7f70] px-6 text-[15px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(63,111,98,.8)] transition-[transform,background-color,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:bg-[#356f62] hover:shadow-[0_18px_32px_-16px_rgba(63,111,98,.75)] active:translate-y-0 sm:w-auto sm:min-w-[218px]"
               >
                 用演示房间进去看看
