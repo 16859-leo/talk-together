@@ -131,24 +131,32 @@ export class ZhihuTopicSource {
     }
 
     // 每个调用者独立响应自己的取消，并对共享结果各自做降级。
-    return this.#awaitShared(shared, options.signal, () =>
+    const outcome = await this.#awaitShared(shared, options.signal, () =>
       pickFallbackTopics(options.interestTags ?? [], count),
-    ).then((value) => {
-      if (value.length === 0) return pickFallbackTopics(options.interestTags ?? [], count);
+    );
+    const value =
+      !outcome.degraded && outcome.value.length > 0
+        ? outcome.value
+        : pickFallbackTopics(options.interestTags ?? [], count);
+
+    // 只缓存上游真实返回的结果。降级话题是按「当前调用者兴趣」挑的，
+    // 写进仅以关键词+数量为键的共享缓存会污染其他房间（且 10 分钟内不再访问上游）。
+    if (!outcome.degraded && outcome.value.length > 0) {
       this.#searchCache.set(key, { value, expiresAt: this.#now() + this.#searchTtl });
-      return value;
-    });
+    }
+    return value;
   }
 
   /**
    * 等待共享上游请求，但只对「本调用者自己的」signal 响应取消；
    * 上游失败时走各自的降级回调，不把异常泄露给等待者。
+   * 返回值带 degraded 标记，供调用方决定能否写入共享缓存。
    */
   async #awaitShared(
     shared: Promise<readonly TopicCandidate[]>,
     signal: AbortSignal | undefined,
     fallback: () => readonly TopicCandidate[],
-  ): Promise<readonly TopicCandidate[]> {
+  ): Promise<{ readonly value: readonly TopicCandidate[]; readonly degraded: boolean }> {
     if (signal?.aborted === true) throw new CapabilityError('AI_CANCELLED', '调用已取消');
 
     const cancelled = new Promise<never>((_, reject) => {
@@ -161,11 +169,11 @@ export class ZhihuTopicSource {
     });
 
     try {
-      return await Promise.race([shared, cancelled]);
+      return { value: await Promise.race([shared, cancelled]), degraded: false };
     } catch (error) {
       if (error instanceof CapabilityError && error.code === 'AI_CANCELLED') throw error;
       // PRD 第 7 节：知乎接口不可用时使用备用精选话题，基础聊天继续。
-      return fallback();
+      return { value: fallback(), degraded: true };
     }
   }
 
@@ -235,8 +243,8 @@ export class ZhihuTopicSource {
       }).catch(() => {});
     }
 
-    const value = await this.#awaitShared(shared, options.signal, fallback);
+    const outcome = await this.#awaitShared(shared, options.signal, fallback);
     // 合并备用池扩充候选并轮换起点，保证多次调用话题有变化。
-    return this.#rotate(this.#mergePool(value, tags), limit);
+    return this.#rotate(this.#mergePool(outcome.value, tags), limit);
   }
 }

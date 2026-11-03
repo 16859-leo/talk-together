@@ -382,3 +382,45 @@ test('P2 取消隔离：abort 首个调用者不影响并发的第二个', async
   assert.ok(r2.length > 0, '未取消的并发请求不应被连累');
   assert.equal(fake.hotCalls, 1, '仍只有一次共享上游调用');
 });
+
+// ---------- PR #5 review 第二轮 P2：降级结果不得污染共享缓存 ----------
+
+/** 首次失败、可恢复的上游，用于验证降级话题没有被写进共享缓存。 */
+class FlakySource implements ZhihuContentSource {
+  searchCalls = 0;
+  fail = true;
+
+  async searchZhihu(): Promise<readonly ZhihuSearchItem[]> {
+    this.searchCalls += 1;
+    if (this.fail) throw new CapabilityError('AI_UNAVAILABLE', '模拟上游故障');
+    return [
+      {
+        title: '旅行中遇到过什么难忘的经历？',
+        contentText: '路上遇到的人、临时改的路线，都可以聊。',
+        url: 'https://z.com/travel',
+        authorName: null,
+      },
+    ];
+  }
+
+  async getHotList(): Promise<readonly ZhihuHotItem[]> {
+    return [];
+  }
+}
+
+test('P2 降级缓存：降级话题不写入共享搜索缓存，上游恢复后其他房间能拿到真实结果', async () => {
+  const fake = new FlakySource();
+  const source = new ZhihuTopicSource(fake);
+
+  // 音乐兴趣房间触发降级：拿到的是「按音乐兴趣挑的备用话题」
+  const degraded = await source.searchCommonTopics('露营', { interestTags: ['音乐'] });
+  assert.equal(degraded[0]?.sourceUrl, null, '首次应回落备用池');
+  assert.equal(fake.searchCalls, 1);
+
+  // 上游恢复后，运动兴趣房间用同一关键词：不能命中被污染的缓存
+  fake.fail = false;
+  const recovered = await source.searchCommonTopics('露营', { interestTags: ['运动'] });
+
+  assert.equal(fake.searchCalls, 2, '降级结果不得缓存，上游恢复后应重新访问');
+  assert.equal(recovered[0]?.sourceUrl, 'https://z.com/travel', '应拿到上游真实结果，而非他人的备用话题');
+});

@@ -3,13 +3,18 @@
  *
  * 经 AI SDK Core 接入（架构文档选型），供应商细节封装在本文件内。
  *
- * 实测依据（agent/test/deepseek-probe.js 与本层冒烟）：
+ * 实测依据（agent/archive/prototype-js/test/deepseek-probe.js 与本层冒烟）：
  *   - deepseek-flash 支持 Tool Calls 与 JSON Output，工具选择 4/4 正确
  *   - 并发 2500，延迟 0.7–1.6s，远低于应用层 30 秒生成期限
  *   - thinking 必须显式 disabled，否则延迟与 token 显著上升
  *   - 工具定义每次请求全量计入 input token，故与 system 一起固定在最前以命中 cache
  *
  * 循环防护：DeepSeek 官方承认存在循环工具调用与空响应风险，故设轮次上限与重复检测。
+ *
+ * 流式安全（PR #5 第二轮 review P1）：
+ *   cleanOutput 的前导处理会在后续字符到达时改写开头（「主持」+「发言：」=> 前两字消失），
+ *   已 yield 的文本无法撤回。因此前导未定型前一个字都不输出，定型后只追加；
+ *   收尾时断言「累计产出 == 最终清洗结果」，不一致直接抛错，绝不交付被截断的句子。
  */
 
 import { streamText, stepCountIs, tool, type ToolSet, type LanguageModel } from 'ai';
@@ -20,7 +25,7 @@ import { CapabilityError } from '../zhihu/types.ts';
 import type { ZhihuTopicSource } from '../zhihu/topic-source.ts';
 import type { TopicCandidate } from '../zhihu/types.ts';
 import { SYSTEM_PROMPT, buildUserPrompt, commonInterestTags } from './prompts.ts';
-import { cleanOutput, rejectOutput } from './sanitize.ts';
+import { MAX_TEXT_LENGTH, analyzeOutput, cleanOutput, rejectOutput } from './sanitize.ts';
 import type { GenerationChunk, GenerationRequest, TextGenerator } from './types.ts';
 
 export interface DeepSeekGeneratorOptions {
@@ -40,6 +45,17 @@ const DEFAULT_MODEL = 'deepseek-flash';
 const DEFAULT_MAX_STEPS = 3;
 /** 零文本/不合格重试次数。单条话题时模型偶尔只调工具不作答，多留一次重试。 */
 const DEFAULT_MAX_RETRIES = 2;
+
+/** 单次生成内「已选定话题」的状态，由工具与主循环共享。 */
+interface SelectionState {
+  selected: TopicCandidate | null;
+}
+
+/** 工具返回给模型的载荷：一条已选定话题，或空结果提示。 */
+interface ToolPayload {
+  readonly topic: { readonly title: string; readonly content: string } | null;
+  readonly hint: string;
+}
 
 export class DeepSeekTextGenerator implements TextGenerator {
   readonly #model: LanguageModel;
@@ -63,9 +79,10 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
   async *generate(request: GenerationRequest): AsyncIterable<GenerationChunk> {
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
-      const picked: TopicCandidate[] = [];
+      // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
+      const state: SelectionState = { selected: null };
       const seenCalls = new Set<string>();
-      const tools = this.#buildTools(request, picked, seenCalls);
+      const tools = this.#buildTools(request, state, seenCalls);
 
       // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
       // invitation 不需要工具：目标已由应用层选定，只生成话术。
@@ -87,31 +104,40 @@ export class DeepSeekTextGenerator implements TextGenerator {
         },
       });
 
-      // 边生成边产出：清洗有状态，逐段累积原始文本后对「新增的干净部分」做增量 yield。
-      // 这样应用层能实时拿到增量，失败/取消时也能保留已输出文字。
+      // raw：模型原始输出；emitted：已交付给应用层的清洗结果。
+      // 前者是清洗的输入，后者是判定「还能追加多少」的游标。
       let raw = '';
       let emitted = '';
       let topicSent = false;
+      let headSettled = false;
 
       try {
         for await (const delta of result.textStream) {
-          if (request.signal.aborted) {
-            throw new CapabilityError('AI_CANCELLED', '调用已取消');
-          }
+          throwIfCancelled(request.signal);
           raw += delta;
 
           // 话题草稿一旦确定就先行发出，供应用层尽早更新当前话题。
-          if (request.purpose === 'topic' && !topicSent && picked[0] !== undefined) {
+          // 消费者可能在收到草稿后立刻取消，所以恢复执行后每个 yield 前都要重查 signal。
+          if (request.purpose === 'topic' && !topicSent && state.selected !== null) {
             topicSent = true;
-            yield { kind: 'topic', topic: picked[0] };
+            yield { kind: 'topic', topic: state.selected };
           }
 
-          const cleaned = cleanOutput(raw);
-          if (cleaned.length > emitted.length && cleaned.startsWith(emitted)) {
-            const increment = cleaned.slice(emitted.length);
-            emitted = cleaned;
-            yield { kind: 'text', delta: increment };
+          const analysis = analyzeOutput(raw);
+          if (analysis.headSettled) headSettled = true;
+          // 前导还可能被改写（如「主持」后面补上「发言：」）：继续缓冲，一个字都不发。
+          if (!headSettled) continue;
+
+          // 末尾留一个字符不急于交付：包裹引号、尾部围栏等只在行尾成立，
+          // 拿到下一个字符才能确定它是否会被剥掉。
+          const target = Math.min(analysis.text.length - 1, MAX_TEXT_LENGTH - 1);
+          if (target <= emitted.length) continue;
+          if (!analysis.text.startsWith(emitted)) {
+            throw new CapabilityError('AI_PROVIDER_ERROR', '文本增量与清洗结果不一致');
           }
+          throwIfCancelled(request.signal);
+          yield { kind: 'text', delta: analysis.text.slice(emitted.length, target) };
+          emitted = analysis.text.slice(0, target);
         }
       } catch (error) {
         throw toCapabilityError(error, request.signal);
@@ -121,24 +147,28 @@ export class DeepSeekTextGenerator implements TextGenerator {
       if (streamError !== null) {
         throw toCapabilityError(streamError, request.signal);
       }
-      if (request.signal.aborted) {
-        throw new CapabilityError('AI_CANCELLED', '调用已取消');
-      }
+      throwIfCancelled(request.signal);
 
       const finalText = cleanOutput(raw);
-      const rejected = finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
-      // 选题成功必须有草稿：模型不调工具直接作答时 picked 为空，视为未完成，触发重试。
-      const topicMissing = request.purpose === 'topic' && picked[0] === undefined;
+      const rejected =
+        finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
+      // 选题成功必须有草稿：模型不调工具直接作答时 selected 为空，视为未完成，触发重试。
+      const topicMissing = request.purpose === 'topic' && state.selected === null;
 
       if (rejected === null && !topicMissing) {
-        // 补发清洗后可能新增的尾部（如末尾标点在流结束时才补全）。
-        if (finalText.length > emitted.length && finalText.startsWith(emitted)) {
+        // 收尾补发：未定型的短回复、缓冲的末尾字符都在这里交付。
+        if (!finalText.startsWith(emitted)) {
+          throw new CapabilityError('AI_PROVIDER_ERROR', '文本增量与最终清洗结果不一致');
+        }
+        if (finalText.length > emitted.length) {
+          throwIfCancelled(request.signal);
           yield { kind: 'text', delta: finalText.slice(emitted.length) };
+          emitted = finalText;
         }
         return;
       }
 
-      // 本次不合格。已经 yield 过增量时不能静默重试（会导致重复文本），
+      // 本次不合格。已经 yield 过内容时不能静默重试（会导致重复文本），
       // 因此只有在尚未产出任何内容时才允许重试，否则直接抛错由应用层处理。
       if (emitted.length > 0 || topicSent) {
         throw new CapabilityError('AI_PROVIDER_ERROR', '模型输出不完整');
@@ -152,7 +182,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
   #buildTools(
     request: GenerationRequest,
-    picked: TopicCandidate[],
+    state: SelectionState,
     seenCalls: Set<string>,
   ): ToolSet {
     const shared = commonInterestTags(request.members);
@@ -164,6 +194,30 @@ export class DeepSeekTextGenerator implements TextGenerator {
         throw new Error('重复的工具调用已被拦截，请基于已有结果作答');
       }
       seenCalls.add(fingerprint);
+    };
+
+    /** 采用本次检索的首条话题；此后整次生成都以它为准。 */
+    const adopt = (topics: readonly TopicCandidate[]): ToolPayload => {
+      const top = topics[0];
+      if (top === undefined) {
+        return { topic: null, hint: '没有找到合适的话题，请换个关键词或改用热榜' };
+      }
+      state.selected = top;
+      return { topic: { title: top.title, content: top.content }, hint: '请直接用这条话题向房间提问' };
+    };
+
+    /**
+     * 话题已选定时不再访问上游：多次不同关键词检索会让模型围绕后一次结果写话术，
+     * 而草稿只可能来自第一次（草稿已先行发出、无法撤回），两者会不一致。
+     * 因此第一次选定后固定复用，既保证草稿与发言一致，也省一次额度。
+     */
+    const frozen = (): ToolPayload | null => {
+      const top = state.selected;
+      if (top === null) return null;
+      return {
+        topic: { title: top.title, content: top.content },
+        hint: '本次已选定这条话题，直接用它提问，不要再换话题',
+      };
     };
 
     return {
@@ -180,20 +234,19 @@ export class DeepSeekTextGenerator implements TextGenerator {
             ),
           count: z.number().int().min(1).max(10).default(5),
         }),
-        execute: async ({ keyword, count }) => {
+        execute: async ({ keyword, count }): Promise<ToolPayload> => {
           guard('search_zhihu_topic', { keyword, count });
+          const already = frozen();
+          if (already !== null) return already;
+
           const topics = await this.#topics.searchCommonTopics(keyword, {
             count,
             interestTags: shared.length > 0 ? shared : allTags,
             signal: request.signal,
           });
-          picked.push(...topics);
           // 只返回首条（已由数据源轮换选定），模型据此写话术，不自行挑选，
           // 以保证草稿与发言一致、且话题随轮换变化。
-          const top = topics[0];
-          return top === undefined
-            ? { topic: null, hint: '没有找到合适的话题，请换个关键词或改用热榜' }
-            : { topic: { title: top.title, content: top.content } };
+          return adopt(topics);
         },
       }),
 
@@ -203,22 +256,26 @@ export class DeepSeekTextGenerator implements TextGenerator {
         inputSchema: z.object({
           limit: z.number().int().min(1).max(5).default(3),
         }),
-        execute: async ({ limit }) => {
+        execute: async ({ limit }): Promise<ToolPayload> => {
           guard('get_hot_list', { limit });
+          const already = frozen();
+          if (already !== null) return already;
+
           const topics = await this.#topics.getPopularTopics({
             limit,
             interestTags: allTags,
             signal: request.signal,
           });
-          picked.push(...topics);
-          const top = topics[0];
-          return top === undefined
-            ? { topic: null, hint: '暂无合适话题' }
-            : { topic: { title: top.title, content: top.content } };
+          return adopt(topics);
         },
       }),
     };
   }
+}
+
+/** 取消检查：任何 yield 之前都必须调用，保证 abort 后不再产出。 */
+function throwIfCancelled(signal: AbortSignal): void {
+  if (signal.aborted) throw new CapabilityError('AI_CANCELLED', '调用已取消');
 }
 
 /** 把 SDK 与网络错误映射为契约允许的错误码。 */

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { cleanOutput, rejectOutput } from '../src/infrastructure/model/sanitize.ts';
+import { analyzeOutput, cleanOutput, rejectOutput } from '../src/infrastructure/model/sanitize.ts';
 import {
   buildUserPrompt,
   commonInterestTags,
@@ -65,11 +65,63 @@ test('清洗：去除 Markdown 粗体', () => {
   assert.equal(cleanOutput('**小林**说得有道理，要不展开聊聊？'), '小林说得有道理，要不展开聊聊？');
 });
 
-test('清洗：超长按句号截断且不留半句', () => {
+test('清洗：超长硬裁剪到上限并用省略号标记，不再按句号缩短', () => {
   const long = `这是第一句话用来测试截断效果。${'后面还有很多很多内容'.repeat(10)}`;
   const r = cleanOutput(long, 30);
-  assert.ok(r.length <= 31, `长度 ${r.length}`);
-  assert.ok(/[。？！…]$/.test(r), `结尾不完整：${r}`);
+  assert.equal(r.length, 30, `应裁剪到上限，实际 ${r.length}`);
+  assert.ok(r.endsWith('…'), `超长输出应带省略号标记：${r}`);
+});
+
+test('清洗：超过上限后结果固定，后续标点不会让已输出文本变短', () => {
+  const prefix = '啊'.repeat(69);
+  const s69 = cleanOutput(prefix);
+  const s70 = cleanOutput(`${prefix}吧`);
+  const s72 = cleanOutput(`${prefix}吧。后面还有更多内容`);
+
+  assert.equal(s69.length, 69);
+  assert.equal(s70.length, 70);
+  assert.equal(s72.length, 70, '越过上限后长度固定');
+  assert.ok(s72.startsWith(s69.slice(0, 68)), '已输出的前缀必须被保留');
+  assert.ok(s72.endsWith('…'));
+});
+
+// ---------- 前导定型（流式缓冲的依据） ----------
+
+test('分析：前导未定型时不输出，「主持」补成「发言：」后正文才出现', () => {
+  const partial = analyzeOutput('主持');
+  assert.equal(partial.text, '');
+  assert.equal(partial.headSettled, false, '补上「发言：」会让开头两个字消失');
+
+  const completed = analyzeOutput(
+    '主持发言：你们周末一般都怎么过呀？是出门走走，还是在家待着，有没有什么固定安排？',
+  );
+  assert.equal(completed.headSettled, true);
+  assert.equal(completed.text, '你们周末一般都怎么过呀？是出门走走，还是在家待着，有没有什么固定安排？');
+});
+
+test('分析：单行短正文在 30 字窗口内保持未定型，写完一行才定型', () => {
+  const short = analyzeOutput('你们周末都怎么过呀？');
+  assert.equal(short.headSettled, false, '后续仍可能出现引导性冒号');
+
+  const multiLine = analyzeOutput('你们周末都怎么过呀？\n另外想问问大家。');
+  assert.equal(multiLine.headSettled, true, '换行说明首行已经写完');
+  assert.equal(multiLine.text, '你们周末都怎么过呀？');
+});
+
+test('分析：未闭合的【】随时会被整段剥离，不得提前输出', () => {
+  const partial = analyzeOutput('【bridge');
+  assert.equal(partial.text, '');
+  assert.equal(partial.headSettled, false);
+
+  const completed = analyzeOutput('【bridge】你们俩聊聊？');
+  assert.equal(completed.text, '你们俩聊聊？');
+});
+
+test('清洗：长行末尾的冒号不会让整行被当作元话语丢弃', () => {
+  const line = '你们周末一般都怎么过呀？最近我一直在琢磨到底要不要说说大家的安排：';
+  const r = cleanOutput(line);
+  assert.equal(r, line, '长行里的正文不能因为行尾冒号被整行丢弃');
+  assert.equal(analyzeOutput(line).headSettled, true, '超过丢弃长度上限后不会再被整行改写');
 });
 
 test('清洗：纯元话语无正文返回空，交由调用方抛错', () => {

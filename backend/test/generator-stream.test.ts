@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 
 import { DeepSeekTextGenerator } from '../src/infrastructure/model/deepseek-generator.ts';
+import { cleanOutput } from '../src/infrastructure/model/sanitize.ts';
 import { ZhihuTopicSource } from '../src/infrastructure/zhihu/topic-source.ts';
 import { CapabilityError } from '../src/infrastructure/zhihu/types.ts';
 import type {
@@ -25,15 +26,15 @@ import type {
 
 type Chunk = Parameters<typeof simulateReadableStream>[0]['chunks'][number];
 
-function textChunks(parts: readonly string[], finishReason = 'stop'): Chunk[] {
+function textChunks(parts: readonly string[], finishReason: 'stop' | 'tool-calls' = 'stop'): Chunk[] {
   const out: Chunk[] = [{ type: 'text-start', id: '1' }];
   for (const p of parts) out.push({ type: 'text-delta', id: '1', delta: p });
   out.push({ type: 'text-end', id: '1' });
   out.push({
     type: 'finish',
-    finishReason,
+    finishReason: { unified: finishReason, raw: finishReason },
     usage: { inputTokens: 1, outputTokens: parts.length, totalTokens: parts.length + 1 },
-  } as Chunk);
+  });
   return out;
 }
 
@@ -46,6 +47,73 @@ function mockModel(chunks: Chunk[], chunkDelayMs = 0): MockLanguageModelV4 {
       }) as unknown as ReadableStream,
     }),
   });
+}
+
+/** 多步 mock：AI SDK 每个工具轮次会再调用一次 doStream，按顺序取下一组分片。 */
+function mockModelStages(
+  stages: readonly (readonly Chunk[])[],
+  chunkDelayMs = 0,
+  prompts: unknown[] = [],
+): MockLanguageModelV4 {
+  let call = 0;
+  return new MockLanguageModelV4({
+    doStream: async (options: unknown) => {
+      prompts.push((options as { prompt?: unknown }).prompt);
+      const chunks = stages[call] ?? stages[stages.length - 1] ?? [];
+      call += 1;
+      return {
+        stream: simulateReadableStream({
+          chunks: [...chunks],
+          chunkDelayInMs: chunkDelayMs,
+        }) as unknown as ReadableStream,
+      };
+    },
+  });
+}
+
+/** 构造一次工具调用轮次的分片（v4 规范：finishReason 是 { unified, raw }）。 */
+function toolCallChunks(callId: string, toolName: string, args: unknown): Chunk[] {
+  const input = JSON.stringify(args);
+  return [
+    { type: 'tool-input-start', id: callId, toolName },
+    { type: 'tool-input-delta', id: callId, delta: input },
+    { type: 'tool-input-end', id: callId },
+    { type: 'tool-call', toolCallId: callId, toolName, input },
+    {
+      type: 'finish',
+      finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    },
+  ];
+}
+
+/** 按关键词返回不同话题的上游，用于验证「多次检索时草稿归属」。 */
+class KeywordSource implements ZhihuContentSource {
+  searchCalls = 0;
+
+  async searchZhihu(keyword: string): Promise<readonly ZhihuSearchItem[]> {
+    this.searchCalls += 1;
+    const isTravel = keyword.includes('旅行');
+    return [
+      isTravel
+        ? {
+            title: '旅行中遇到过什么难忘的经历？',
+            contentText: '路上遇到的人、临时改的路线，都可以聊。',
+            url: 'https://z.com/travel',
+            authorName: null,
+          }
+        : {
+            title: '音乐现场让你印象最深的一次是哪次？',
+            contentText: '聊现场、聊乐队，都行。',
+            url: 'https://z.com/music',
+            authorName: null,
+          },
+    ];
+  }
+
+  async getHotList(): Promise<readonly ZhihuHotItem[]> {
+    return [];
+  }
 }
 
 class StubSource implements ZhihuContentSource {
@@ -91,13 +159,70 @@ async function collect(it: AsyncIterable<GenerationChunk>): Promise<GenerationCh
 
 // ---------- P1：渐进产出 ----------
 
-test('P1 渐进产出：文本分多片增量 yield，而非一次性全文', async () => {
-  const gen = makeGen(mockModel(textChunks(['你们周末', '一般都', '怎么过呀？'])));
+test('P1 渐进产出：前导定型后文本分多片增量 yield，而非一次性全文', async () => {
+  // 超过前导判定窗口（30 字）才会开始流式，故用一条完整的主持话术
+  const gen = makeGen(
+    mockModel(
+      textChunks([
+        '你们周末一般都怎么过呀？',
+        '是出门走走还是在家待着，',
+        '有没有什么固定的小安排？',
+        '我最近迷上了露营。',
+      ]),
+    ),
+  );
   const chunks = await collect(gen.generate(makeRequest()));
   const textChunksOut = chunks.filter((c) => c.kind === 'text');
   assert.ok(textChunksOut.length >= 2, `应分多片产出，实际 ${textChunksOut.length} 片`);
   const whole = textChunksOut.map((c) => (c.kind === 'text' ? c.delta : '')).join('');
-  assert.equal(whole, '你们周末一般都怎么过呀？');
+  assert.equal(
+    whole,
+    '你们周末一般都怎么过呀？是出门走走还是在家待着，有没有什么固定的小安排？我最近迷上了露营。',
+  );
+});
+
+test('P1 前缀缓冲：先出「主持」再补「发言：」，不得把半句交付出去', async () => {
+  // review 复现用例：前两片看起来是正文，第三片才说明开头是元话语前缀
+  const gen = makeGen(mockModel(textChunks(['主持', '发言：', '你们周末都怎么过呀？'])));
+  const chunks = await collect(gen.generate(makeRequest()));
+  const text = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+
+  assert.equal(text, '你们周末都怎么过呀？', '应只交付清洗后的完整正文');
+  assert.ok(!text.includes('主持'), '缓冲的前缀不得泄露给应用层');
+});
+
+test('P1 前导定型：冒号晚到时不得提前输出被截掉的前缀', async () => {
+  // 「我想问问大家」先到达时看不出是元话语，冒号一到整段前缀就应被丢弃
+  const gen = makeGen(
+    mockModel(textChunks(['我想问问大家', '：周末一般都怎么安排？', '有没有固定的安排'])),
+  );
+  const chunks = await collect(gen.generate(makeRequest()));
+  const text = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+
+  assert.equal(text, '周末一般都怎么安排？有没有固定的安排');
+  assert.ok(!text.includes('我想问问大家'), '被截断的前缀不得交付');
+});
+
+test('P1 超长输出：裁剪后增量仍与最终清洗结果一致，不抛错', async () => {
+  const parts = [
+    '你们周末一般都怎么过呀？',
+    '后面还有很多很多内容'.repeat(8),
+  ];
+  const gen = makeGen(mockModel(textChunks(parts)));
+  const chunks = await collect(gen.generate(makeRequest()));
+  const text = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+
+  assert.equal(text, cleanOutput(parts.join('')), '交付文本必须等于最终清洗结果');
+  assert.ok(text.length <= 70, `不应超过硬上限，实际 ${text.length}`);
 });
 
 // ---------- P1：错误事件 ----------
@@ -122,8 +247,18 @@ test('P1 错误事件：先出合格文本再出 error，应抛错而非标成�
 
 test('P2 取消：合格文本已出但随后 abort，仍应抛 AI_CANCELLED', async () => {
   const controller = new AbortController();
-  // 分片有延迟，便于在产出中途取消
-  const gen = makeGen(mockModel(textChunks(['这是第一段', '这是第二段', '这是第三段']), 20));
+  // 文本要够长，前导定型后才会开始产出增量，便于在产出中途取消
+  const gen = makeGen(
+    mockModel(
+      textChunks([
+        '你们周末一般都怎么过呀？',
+        '是出门走走还是在家待着，',
+        '有没有什么固定的小安排？',
+        '我最近迷上了露营。',
+      ]),
+      20,
+    ),
+  );
   const req = makeRequest({ signal: controller.signal });
 
   await assert.rejects(
@@ -160,4 +295,67 @@ test('reply 正常：合格文本完整产出并结束', async () => {
   const chunks = await collect(gen.generate(makeRequest()));
   const whole = chunks.filter((c) => c.kind === 'text').map((c) => (c.kind === 'text' ? c.delta : '')).join('');
   assert.equal(whole, '最近有啥好玩的事分享下？');
+});
+
+// ---------- P2：草稿归属与取消时机（第二轮 review） ----------
+
+test('P2 草稿归属：多次检索时草稿固定为工具实际采用的那一条', async () => {
+  const source = new KeywordSource();
+  const prompts: unknown[] = [];
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages(
+      [
+        toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+        toolCallChunks('c2', 'search_zhihu_topic', { keyword: '音乐', count: 5 }),
+        textChunks(['你们有没有', '在路上遇到过', '特别难忘的事情？']),
+      ],
+      0,
+      prompts,
+    ),
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(
+    gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null })),
+  );
+  const draft = chunks.find((c) => c.kind === 'topic');
+  assert.ok(draft !== undefined && draft.kind === 'topic', '选题必须产出草稿');
+  assert.equal(draft.topic.title, '旅行中遇到过什么难忘的经历？');
+
+  // 第二次检索不再打上游，模型拿到的仍是已选定话题
+  assert.equal(source.searchCalls, 1, '选定话题后不应再消耗额度');
+  const secondStepPrompt = JSON.stringify(prompts[1] ?? '');
+  assert.ok(secondStepPrompt.includes('旅行中遇到过什么难忘的经历？'), '第二次工具结果应是已选定话题');
+  assert.ok(!secondStepPrompt.includes('音乐现场'), '不得把另一条话题喂给模型造成草稿/发言不一致');
+});
+
+test('P2 草稿后取消：收到话题草稿后立刻 abort，不得再产出文本', async () => {
+  const controller = new AbortController();
+  const source = new KeywordSource();
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages(
+      [
+        toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+        // 首片就直接超过前导窗口：草稿 yield 恢复后立刻满足「可以输出文本」的条件，
+        // 只有 yield 前的取消复查能拦住它。
+        textChunks(['你们周末一般都怎么过呀？是出门走走还是在家待着，有没有什么固定安排？'], 'stop'),
+      ],
+      20,
+    ),
+    maxRetries: 0,
+  });
+
+  const it = gen.generate(
+    makeRequest({ purpose: 'topic', prompt: null, caller: null, signal: controller.signal }),
+  )[Symbol.asyncIterator]();
+
+  const first = await it.next();
+  assert.ok(first.done !== true && first.value.kind === 'topic', '首片应是话题草稿');
+
+  controller.abort();
+  await assert.rejects(
+    () => it.next(),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_CANCELLED',
+    '草稿 yield 恢复后必须重新检查取消状态',
+  );
 });
