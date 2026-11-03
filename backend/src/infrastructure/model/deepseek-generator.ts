@@ -89,10 +89,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
       // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
       const state: SelectionState = { selected: null, pending: null, selectedAtLength: null };
       const seenCalls = new Set<string>();
-      // raw：模型原始输出（清洗的输入）。工具在选定话题时记录当时的长度，
-      // 用于判断「检索之后是否还有正文」，故先声明、再构造工具。
-      let raw = '';
-      const tools = this.#buildTools(request, state, seenCalls, () => raw);
+      const tools = this.#buildTools(request, state, seenCalls);
 
       // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
       // invitation 不需要工具：目标已由应用层选定，只生成话术。
@@ -114,14 +111,34 @@ export class DeepSeekTextGenerator implements TextGenerator {
         },
       });
 
-      // emitted：已交付给应用层的清洗结果，是判定「还能追加多少」的游标。
+      // raw：模型原始输出；emitted：已交付给应用层的清洗结果。
+      // 前者是清洗的输入，后者是判定「还能追加多少」的游标。
+      let raw = '';
       let emitted = '';
       let topicSent = false;
       let headSettled = false;
 
       try {
-        for await (const delta of result.textStream) {
+        // 用 fullStream 而不是 textStream：需要按模型事件顺序看到 tool-result，
+        // 才能在「检索完成」那一刻给正文划界。若用下游已消费的长度，
+        // 消费者暂停时 SDK 可能已继续读流并执行检索，检索前的文本会被算成检索后。
+        for await (const part of result.fullStream) {
           throwIfCancelled(request.signal);
+
+          if (part.type === 'error') {
+            streamError = part.error;
+            continue;
+          }
+          if (part.type === 'tool-result') {
+            // 检索完成：此刻 raw 里正好是检索前的全部正文。
+            if (state.selected !== null && state.selectedAtLength === null) {
+              state.selectedAtLength = raw.length;
+            }
+            continue;
+          }
+          if (part.type !== 'text-delta') continue;
+
+          const delta = part.text;
           raw += delta;
 
           // 话题草稿一旦确定就先行发出，供应用层尽早更新当前话题。
@@ -166,18 +183,25 @@ export class DeepSeekTextGenerator implements TextGenerator {
       const finalText = cleanOutput(raw);
       const rejected =
         finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
-      // 选题成功必须有草稿，且话术要产生于检索结果之后：
-      // 「先写正文 → 再检索 → 零文本结束」的路径下，正文与草稿必然不一致，不能算成功。
+
+      // 选题成功必须有草稿，且**实际交付的正文**要产生于检索结果之后。
+      // 只检查原始字符非空不够：检索后只补了 `**` 或另起一行时，cleanOutput 会
+      // 把新增内容剥掉/丢弃，交付出去的仍然是检索前那段；此时正文与草稿必然不一致。
+      const boundaryText =
+        state.selectedAtLength === null
+          ? ''
+          : analyzeOutput(raw.slice(0, state.selectedAtLength)).text;
+      const deliveredAfterSelection =
+        boundaryText.length > 0 && finalText.startsWith(boundaryText)
+          ? finalText.slice(boundaryText.length)
+          : finalText;
       const topicMissing =
         request.purpose === 'topic' &&
-        (state.selected === null ||
-          state.selectedAtLength === null ||
-          raw.slice(state.selectedAtLength).trim().length === 0);
+        (state.selected === null || deliveredAfterSelection.trim().length === 0);
 
       if (rejected === null && !topicMissing) {
-        // 草稿补发：模型可能先写完话术、随后才调检索工具，再以零文本结束。
-        // 该路径不会进入文本循环里的草稿 yield，必须在收尾补上，
-        // 否则应用层拿到「成功」却没有更新当前话题所需的草稿。
+        // 草稿补发：正常路径草稿已在文本循环里先行发出，这里只作防御
+        // （例如话题选定后正文恰好没有触发增量的极端情况）。
         if (request.purpose === 'topic' && !topicSent && state.selected !== null) {
           throwIfCancelled(request.signal);
           topicSent = true;
@@ -214,10 +238,12 @@ export class DeepSeekTextGenerator implements TextGenerator {
     request: GenerationRequest,
     state: SelectionState,
     seenCalls: Set<string>,
-    readRaw: () => string,
   ): ToolSet {
     const shared = commonInterestTags(request.members);
     const allTags = [...new Set(request.members.flatMap((m) => m.interestTags))];
+    /** 换话题场景下不要把当前话题再抛一次。 */
+    const currentTopicTitles = (): readonly string[] =>
+      request.currentTopic === null ? [] : [request.currentTopic.title];
 
     const guard = (name: string, args: unknown): void => {
       const fingerprint = `${name}:${JSON.stringify(args)}`;
@@ -234,8 +260,6 @@ export class DeepSeekTextGenerator implements TextGenerator {
         return { topic: null, hint: '没有找到合适的话题，请换个关键词或改用热榜' };
       }
       state.selected = top;
-      // 记下此刻的正文长度：收尾时用它判断检索之后是否还有话术。
-      if (state.selectedAtLength === null) state.selectedAtLength = readRaw().length;
       return { topic: { title: top.title, content: top.content }, hint: '请直接用这条话题向房间提问' };
     };
 
@@ -299,6 +323,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
               count,
               interestTags: shared.length > 0 ? shared : allTags,
               signal: request.signal,
+              excludeTitles: currentTopicTitles(),
             }),
           );
         },
@@ -317,6 +342,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
               limit,
               interestTags: allTags,
               signal: request.signal,
+              excludeTitles: currentTopicTitles(),
             }),
           );
         },

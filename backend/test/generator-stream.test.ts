@@ -102,6 +102,22 @@ function finishChunk(reason: 'stop' | 'tool-calls'): Chunk {
   };
 }
 
+/** 同一步里先写正文、再调工具（复现「正文产生于检索之前」）。 */
+function textThenToolCallChunks(
+  text: string,
+  callId: string,
+  toolName: string,
+  args: unknown,
+): Chunk[] {
+  return [
+    { type: 'text-start', id: '1' },
+    { type: 'text-delta', id: '1', delta: text },
+    { type: 'text-end', id: '1' },
+    ...toolCallParts(callId, toolName, args),
+    finishChunk('tool-calls'),
+  ];
+}
+
 /** 按关键词返回不同话题的上游，用于验证「多次检索时草稿归属」。 */
 class KeywordSource implements ZhihuContentSource {
   searchCalls = 0;
@@ -580,4 +596,67 @@ test('P2 错误分类：SDK 重试耗尽后的 RetryError 要按真实状态码�
       `HTTP ${item.status} 应映射为 ${item.code}`,
     );
   }
+});
+
+// ---------- 第五轮 review：交付正文边界 / 事件顺序 / 共同话题轮换 ----------
+
+const MUSIC_TEXT = '你们最近都在听什么歌呀？我最近一直在循环一张现场专辑，特别好听';
+
+test('P2 检索后只补 Markdown：交付正文没有增长，判未完成', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: mockModelStages([
+      textThenToolCallChunks(MUSIC_TEXT, 'c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks(['**'], 'stop'),
+    ]),
+    maxRetries: 0,
+  });
+
+  await assert.rejects(
+    () => collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '检索后只补了会被清洗掉的字符，交付的仍是检索前正文',
+  );
+});
+
+test('P2 检索后另起一行：首行仍是检索前正文，判未完成', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: mockModelStages([
+      textThenToolCallChunks(MUSIC_TEXT, 'c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks(['\n我们聊聊旅行吧？'], 'stop'),
+    ]),
+    maxRetries: 0,
+  });
+
+  await assert.rejects(
+    () => collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    'cleanOutput 只保留首行，检索后另起一行时交付正文没有增长',
+  );
+});
+
+test('P2 事件顺序：消费者中途暂停，检索前文本也不会被算成检索后正文', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: mockModelStages([
+      textThenToolCallChunks(MUSIC_TEXT, 'c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      [finishChunk('stop')],
+    ]),
+    maxRetries: 0,
+  });
+
+  const it = gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null }))[
+    Symbol.asyncIterator
+  ]();
+
+  await assert.rejects(
+    async () => {
+      while (true) {
+        const r = await it.next();
+        if (r.done === true) break;
+        // 消费变慢：SDK 可能已继续读流并执行检索，边界必须按事件顺序记录
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    },
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
+    '检索后没有任何正文，暂停消费不应改变这个判断',
+  );
 });

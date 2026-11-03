@@ -52,21 +52,38 @@ export class ZhihuTopicSource {
   #upstreamHotCalls = 0;
   #upstreamSearchCalls = 0;
 
-  /** 缓存命中时的轮转游标，让同一批热榜在多次调用间轮换起点。 */
-  #hotRotation = 0;
+  /** 轮转游标：热榜与共同话题各自独立，保证同一批候选在多次调用间换起点。 */
+  readonly #rotation = { hot: 0, search: 0 };
 
   /**
    * 从候选列表中轮转取 limit 条，且每次调用都推进起点。
    * 只要池内有 2 条以上，连续调用返回的「第一条」就会不同 ——
    * 这是关键：模型工具通常请求较大的 limit（如 10），若只在 pool>limit 时
    * 才轮转，limit 覆盖整池就永远原样返回、第一条不变，导致话题重复。
+   * 共同话题同样要轮转：缓存默认 10 分钟，否则「换话题」会一直重新发布同一条。
    */
-  #rotate(pool: readonly TopicCandidate[], limit: number): readonly TopicCandidate[] {
+  #rotate(
+    pool: readonly TopicCandidate[],
+    limit: number,
+    kind: 'hot' | 'search',
+  ): readonly TopicCandidate[] {
     if (pool.length <= 1) return pool;
-    const start = this.#hotRotation % pool.length;
-    this.#hotRotation += 1;
+    const start = this.#rotation[kind] % pool.length;
+    this.#rotation[kind] += 1;
     const rotated = [...pool.slice(start), ...pool.slice(0, start)];
     return rotated.slice(0, limit);
+  }
+
+  /** 先排除当前话题，再轮转取前 limit 条；全都排除时退回原候选，避免无话题可抛。 */
+  #select(
+    pool: readonly TopicCandidate[],
+    limit: number,
+    excludedTitles: readonly string[],
+    kind: 'hot' | 'search',
+  ): readonly TopicCandidate[] {
+    const filtered =
+      excludedTitles.length === 0 ? pool : pool.filter((t) => !excludedTitles.includes(t.title));
+    return this.#rotate(filtered.length > 0 ? filtered : pool, limit, kind);
   }
 
   constructor(source: ZhihuContentSource, options: TopicSourceOptions = {}) {
@@ -86,18 +103,26 @@ export class ZhihuTopicSource {
    */
   async searchCommonTopics(
     keyword: string,
-    options: { readonly count?: number; readonly interestTags?: readonly string[]; readonly signal?: AbortSignal } = {},
+    options: {
+      readonly count?: number;
+      readonly interestTags?: readonly string[];
+      readonly signal?: AbortSignal;
+      /** 当前话题标题，通常来自 `currentTopic`：换话题时不要又选中同一条。 */
+      readonly excludeTitles?: readonly string[];
+    } = {},
   ): Promise<readonly TopicCandidate[]> {
     const normalized = keyword.trim();
     const count = options.count ?? 5;
+    const excluded = options.excludeTitles ?? [];
     if (normalized.length === 0) {
-      return pickFallbackTopics(options.interestTags ?? [], count);
+      return this.#select(pickFallbackTopics(options.interestTags ?? [], count), count, excluded, 'search');
     }
 
     const key = `${normalized}::${count}`;
     const cached = this.#searchCache.get(key);
     if (cached !== undefined && cached.expiresAt > this.#now()) {
-      return cached.value;
+      // 命中缓存也要轮转并排除当前话题，否则 10 分钟内会反复选中同一条。
+      return this.#select(cached.value, count, excluded, 'search');
     }
 
     // 共享上游请求不绑定任一调用者的 signal，避免某个房间取消连累其他等待者。
@@ -144,7 +169,7 @@ export class ZhihuTopicSource {
     if (!outcome.degraded && outcome.value.length > 0) {
       this.#searchCache.set(key, { value, expiresAt: this.#now() + this.#searchTtl });
     }
-    return value;
+    return this.#select(value, count, excluded, 'search');
   }
 
   /**
@@ -201,15 +226,22 @@ export class ZhihuTopicSource {
    * 对应 PRD 5.3「兴趣差异较大时，选择当前知乎热榜上排名较高、适合破冰的话题」。
    */
   async getPopularTopics(
-    options: { readonly limit?: number; readonly interestTags?: readonly string[]; readonly signal?: AbortSignal } = {},
+    options: {
+      readonly limit?: number;
+      readonly interestTags?: readonly string[];
+      readonly signal?: AbortSignal;
+      /** 当前话题标题，换话题时不要又选中同一条。 */
+      readonly excludeTitles?: readonly string[];
+    } = {},
   ): Promise<readonly TopicCandidate[]> {
     const limit = options.limit ?? 5;
     const tags = options.interestTags ?? [];
+    const excluded = options.excludeTitles ?? [];
     const fallback = (): readonly TopicCandidate[] => pickFallbackTopics(tags, limit);
 
     const cached = this.#hotCache;
     if (cached !== null && cached.expiresAt > this.#now()) {
-      return this.#rotate(this.#mergePool(cached.value, tags), limit);
+      return this.#select(this.#mergePool(cached.value, tags), limit, excluded, 'hot');
     }
 
     // 共享上游请求不绑定任一调用者的 signal。缓存写入在共享任务内完成，
@@ -245,6 +277,6 @@ export class ZhihuTopicSource {
 
     const outcome = await this.#awaitShared(shared, options.signal, fallback);
     // 合并备用池扩充候选并轮换起点，保证多次调用话题有变化。
-    return this.#rotate(this.#mergePool(outcome.value, tags), limit);
+    return this.#select(this.#mergePool(outcome.value, tags), limit, excluded, 'hot');
   }
 }

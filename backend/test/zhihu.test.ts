@@ -424,3 +424,36 @@ test('P2 降级缓存：降级话题不写入共享搜索缓存，上游恢复�
   assert.equal(fake.searchCalls, 2, '降级结果不得缓存，上游恢复后应重新访问');
   assert.equal(recovered[0]?.sourceUrl, 'https://z.com/travel', '应拿到上游真实结果，而非他人的备用话题');
 });
+
+// ---------- 第五轮 review P2：共同话题轮换与排除当前话题 ----------
+
+test('P2 共同话题：缓存命中时轮转候选，并排除当前话题', async () => {
+  const fake = new FakeSource([], [
+    {
+      title: '旅行中遇到过什么难忘的经历？',
+      contentText: '路上遇到的人、临时改的路线，都可以聊。',
+      url: 'https://z.com/a',
+      authorName: null,
+    },
+    {
+      title: '周末一般喜欢去哪儿逛逛？',
+      contentText: '附近的小店、公园都算。',
+      url: 'https://z.com/b',
+      authorName: null,
+    },
+  ]);
+  const source = new ZhihuTopicSource(fake);
+  const opts = { interestTags: ['旅行'], count: 2 };
+
+  const first = await source.searchCommonTopics('露营', opts);
+  const second = await source.searchCommonTopics('露营', opts);
+  assert.notEqual(first[0]?.title, second[0]?.title, '缓存命中也要轮转，不能每次都返回同一条');
+
+  const excludedTitle = second[0]?.title ?? '';
+  const third = await source.searchCommonTopics('露营', { ...opts, excludeTitles: [excludedTitle] });
+  assert.ok(
+    !third.some((topic) => topic.title === excludedTitle),
+    '换话题时应排除当前话题',
+  );
+  assert.equal(fake.searchCalls, 1, '缓存期内不应重复访问上游');
+});
