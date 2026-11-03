@@ -12,7 +12,7 @@ import type { ActiveMember, MemberMessage, ValidationPolicy } from '../shared/ap
 import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
 import { demoCursor, demoSnapshot } from '../state/demo'
 import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
-import { clearSession, devSession, loadSession, type RoomSession } from '../state/session'
+import { clearSession, devSession, loadSession, saveSession, type RoomSession } from '../state/session'
 import { formatLeft, useNow } from '../shared/ui/useNow'
 
 const FALLBACK_POLICY: ValidationPolicy = {
@@ -58,10 +58,14 @@ export default function RoomPage() {
   const pendingSend = useRef<{ id: string; text: string } | null>(null)
   const channelRef = useRef<BroadcastChannel | null>(null)
 
-  const session = useMemo<RoomSession | null>(
+  // 会话放进 state：改完资料要立刻更新，否则「补自己」的逻辑会用旧昵称盖回去
+  const [session, setSession] = useState<RoomSession | null>(
     () => loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null),
-    [roomId],
   )
+
+  useEffect(() => {
+    setSession(loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null))
+  }, [roomId])
 
   // 改资料弹层的校验约束和入房页同源
   useEffect(() => {
@@ -195,7 +199,7 @@ export default function RoomPage() {
     return () => {
       alive = false
     }
-  }, [roomId, session])
+  }, [roomId, session?.credential, session?.membershipId])
 
   // 领票 → 建连 → 首帧快照 → 事件流。
   useEffect(() => {
@@ -216,7 +220,8 @@ export default function RoomPage() {
       controller.abort()
       close()
     }
-  }, [roomId, session])
+    // 改昵称不应该重建连接，只跟凭证走
+  }, [roomId, session?.credential, session?.membershipId])
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -383,7 +388,36 @@ export default function RoomPage() {
         },
         session,
       )
-      dispatch({ type: 'member-updated', member: data.member })
+
+      // 回执对不上（Mock 固定示例）时，用本地这份兜底，别让界面弹回旧资料
+      const echoed = data.member
+      const mine = state.members.find((member) => member.id === session.memberId)
+      const sameShape =
+        echoed.id === session.memberId &&
+        echoed.profile.nickname === values.nickname &&
+        echoed.profile.interestTags.join('/') === values.interestTags.join('/')
+
+      const next = sameShape
+        ? echoed
+        : {
+            ...(mine ?? echoed),
+            id: session.memberId,
+            profile: {
+              nickname: values.nickname,
+              interestTags: values.interestTags,
+              bio: values.bio,
+            },
+          }
+
+      dispatch({ type: 'member-updated', member: next })
+      // 本地身份也一起更新，否则「补自己」的那段逻辑会用旧昵称覆盖回去
+      const nextSession = {
+        ...session,
+        nickname: values.nickname,
+        interestTags: values.interestTags,
+      }
+      saveSession(roomId, nextSession)
+      setSession(nextSession)
       setProfileOpen(false)
       setNotice('资料已更新，房间里的人都看到了')
     } catch (error) {
