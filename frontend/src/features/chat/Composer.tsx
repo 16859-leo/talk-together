@@ -50,7 +50,7 @@ export function Composer({ canMention, disabled, onSend }: ComposerProps) {
         </button>
       )}
 
-      <div className="flex items-center gap-2 border-t-[1.5px] border-[rgba(90,74,58,.45)] pt-2.5">
+      <div className="mt-3 flex items-center gap-2 rounded-[16px] border-[1.5px] border-rule bg-card py-1.5 pl-3.5 pr-1.5 transition-shadow focus-within:border-[rgba(96,166,150,.7)] focus-within:shadow-[0_0_0_4px_rgba(124,185,168,.14)]">
         <input
           ref={inputRef}
           value={value}
@@ -63,21 +63,16 @@ export function Composer({ canMention, disabled, onSend }: ComposerProps) {
             }
           }}
           placeholder={canMention ? '说点什么，输入 @ 可以让导播接一句' : '说点什么'}
-          className="min-w-0 flex-1 bg-transparent px-0.5 py-1.5 text-[14px] text-ink-2 outline-none placeholder:text-faint disabled:opacity-60"
+          className="min-w-0 flex-1 bg-transparent py-1.5 text-[14px] text-ink-2 outline-none placeholder:text-faint disabled:opacity-60"
         />
         <button
           type="button"
           onClick={() => void submit()}
           disabled={disabled || sending || value.trim().length === 0}
-          className="rounded-[13px] bg-sage-deep px-5 py-2 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-[#549c8b] disabled:opacity-50"
+          className="rounded-[12px] bg-sage-deep px-5 py-2 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-[#549c8b] disabled:opacity-50"
         >
           {sending ? '发送中…' : '发送'}
         </button>
-      </div>
-
-      <div className="mt-1.5 flex justify-between text-[11px] text-muted">
-        <span>{canMention ? '仅房主可以调用 AI' : '成员不能主动调用 AI'}</span>
-        <span>Enter 发送 · Shift + Enter 换行</span>
       </div>
     </div>
   )
