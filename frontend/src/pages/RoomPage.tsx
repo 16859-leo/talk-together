@@ -90,10 +90,18 @@ export default function RoomPage() {
     }
   }, [state.ready])
 
-  // 快照里的 self 必须和本地凭证一致；Mock 的固定数据会对不上，以本地凭证为准。
+  // 快照的 self 与本地凭证不一致只可能是 Mock：开发态以本地为准，
+  // 联调时信任服务端并在控制台提示，别把真实问题藏起来。
   useEffect(() => {
     if (!state.ready || !state.self || !session) return
     if (state.self.memberId === session.memberId) return
+    if (!import.meta.env.DEV) {
+      console.warn('[identity] 快照的 self 与本地凭证不一致', {
+        snapshot: state.self.memberId,
+        local: session.memberId,
+      })
+      return
+    }
     dispatch({
       type: 'self-override',
       self: {
@@ -136,8 +144,9 @@ export default function RoomPage() {
       return
     }
 
-    // 名单里有这个 id，但资料还是别人的（Mock 的固定成员），以本地填的为准
-    if (existing.profile.nickname !== session.nickname) {
+    // 名单里有这个 id，但昵称对不上：只可能是 Mock 的固定成员，
+    // 开发态用本地填的资料覆盖；联调时以服务端归一化后的资料为准。
+    if (import.meta.env.DEV && existing.profile.nickname !== session.nickname) {
       dispatch({
         type: 'member-updated',
         member: {
@@ -274,8 +283,9 @@ export default function RoomPage() {
       pendingSend.current = null
       // Mock 或后端回执可能带着别人的示例数据：对不上就用本地这条兜底
       const echoed = data.message
-      const usable =
-        echoed.text === text && echoed.author.memberId === session.memberId
+      // 只按作者判断：正文被服务端归一化（去空格等）属于正常，
+      // 服务端回的才是权威版本；作者不是我就说明是 Mock 的固定示例。
+      const usable = echoed.author.memberId === session.memberId
       const own: MemberMessage = usable
         ? echoed
         : {
