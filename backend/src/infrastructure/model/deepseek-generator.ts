@@ -49,6 +49,8 @@ const DEFAULT_MAX_RETRIES = 2;
 /** 单次生成内「已选定话题」的状态，由工具与主循环共享。 */
 interface SelectionState {
   selected: TopicCandidate | null;
+  /** 进行中的选题检索；并行工具调用复用同一次请求，避免各自 adopt 出不同话题。 */
+  pending: Promise<ToolPayload> | null;
 }
 
 /** 工具返回给模型的载荷：一条已选定话题，或空结果提示。 */
@@ -80,7 +82,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
   async *generate(request: GenerationRequest): AsyncIterable<GenerationChunk> {
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
       // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
-      const state: SelectionState = { selected: null };
+      const state: SelectionState = { selected: null, pending: null };
       const seenCalls = new Set<string>();
       const tools = this.#buildTools(request, state, seenCalls);
 
@@ -156,6 +158,14 @@ export class DeepSeekTextGenerator implements TextGenerator {
       const topicMissing = request.purpose === 'topic' && state.selected === null;
 
       if (rejected === null && !topicMissing) {
+        // 草稿补发：模型可能先写完话术、随后才调检索工具，再以零文本结束。
+        // 该路径不会进入文本循环里的草稿 yield，必须在收尾补上，
+        // 否则应用层拿到「成功」却没有更新当前话题所需的草稿。
+        if (request.purpose === 'topic' && !topicSent && state.selected !== null) {
+          throwIfCancelled(request.signal);
+          topicSent = true;
+          yield { kind: 'topic', topic: state.selected };
+        }
         // 收尾补发：未定型的短回复、缓冲的末尾字符都在这里交付。
         if (!finalText.startsWith(emitted)) {
           throw new CapabilityError('AI_PROVIDER_ERROR', '文本增量与最终清洗结果不一致');
@@ -165,6 +175,9 @@ export class DeepSeekTextGenerator implements TextGenerator {
           yield { kind: 'text', delta: finalText.slice(emitted.length) };
           emitted = finalText;
         }
+        // 最后一片之后、正常返回之前再查一次：消费者收到末片后 abort，
+        // 不能因为生成器已无事可做就返回 done（那会被当成成功完成）。
+        throwIfCancelled(request.signal);
         return;
       }
 
@@ -220,6 +233,31 @@ export class DeepSeekTextGenerator implements TextGenerator {
       };
     };
 
+    /**
+     * 执行一次选题并固定结果。
+     *
+     * 模型可能在同一步里并行调用多个检索工具：两个调用都会在上游返回前读到空的
+     * `selected`，随后各自 adopt 出不同话题、互相覆盖（草稿 A、发言 B）。
+     * 因此进行中的请求放在 state.pending 里共享，后到的调用直接复用同一个 Promise。
+     */
+    const requestSelection = async (
+      fetcher: () => Promise<readonly TopicCandidate[]>,
+    ): Promise<ToolPayload> => {
+      const already = frozen();
+      if (already !== null) return already;
+
+      const inFlight = state.pending;
+      if (inFlight !== null) return inFlight;
+
+      const task = (async () => adopt(await fetcher()))();
+      state.pending = task;
+      try {
+        return await task;
+      } finally {
+        if (state.pending === task) state.pending = null;
+      }
+    };
+
     return {
       search_zhihu_topic: tool({
         description:
@@ -236,17 +274,13 @@ export class DeepSeekTextGenerator implements TextGenerator {
         }),
         execute: async ({ keyword, count }): Promise<ToolPayload> => {
           guard('search_zhihu_topic', { keyword, count });
-          const already = frozen();
-          if (already !== null) return already;
-
-          const topics = await this.#topics.searchCommonTopics(keyword, {
-            count,
-            interestTags: shared.length > 0 ? shared : allTags,
-            signal: request.signal,
-          });
-          // 只返回首条（已由数据源轮换选定），模型据此写话术，不自行挑选，
-          // 以保证草稿与发言一致、且话题随轮换变化。
-          return adopt(topics);
+          return requestSelection(() =>
+            this.#topics.searchCommonTopics(keyword, {
+              count,
+              interestTags: shared.length > 0 ? shared : allTags,
+              signal: request.signal,
+            }),
+          );
         },
       }),
 
@@ -258,15 +292,13 @@ export class DeepSeekTextGenerator implements TextGenerator {
         }),
         execute: async ({ limit }): Promise<ToolPayload> => {
           guard('get_hot_list', { limit });
-          const already = frozen();
-          if (already !== null) return already;
-
-          const topics = await this.#topics.getPopularTopics({
-            limit,
-            interestTags: allTags,
-            signal: request.signal,
-          });
-          return adopt(topics);
+          return requestSelection(() =>
+            this.#topics.getPopularTopics({
+              limit,
+              interestTags: allTags,
+              signal: request.signal,
+            }),
+          );
         },
       }),
     };

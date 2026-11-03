@@ -49,15 +49,6 @@ export interface OutputAnalysis {
   readonly headSettled: boolean;
 }
 
-/** 剥掉行首标记：代码围栏、「主持发言：」之类前缀、【】标记。 */
-function stripLeadingMarkers(input: string): string {
-  let text = input.trim();
-  text = text.replace(/^```(?:\w+)?\s*/, '');
-  text = text.replace(/^【.*?】\s*/, '');
-  text = text.replace(/^(主持发言|主持人|发言)\s*[:：]\s*/i, '');
-  return text;
-}
-
 /**
  * 前导标记是否可能还没写完：
  *   - 文本整体是某个标记的前缀（「主持」「发」），后面补字就可能被剥离；
@@ -93,16 +84,23 @@ export function analyzeOutput(raw: string, maxLength = MAX_TEXT_LENGTH): OutputA
   if (/^`{1,2}$/.test(trimmed)) {
     return { text: '', headSettled: false };
   }
-  // 未闭合的【...】随时可能被整段剥离
-  if (trimmed.startsWith('【') && !trimmed.includes('】')) {
+
+  // 先剥掉外层围栏，再做后续检查：若先看原文，```，【... 这种组合会因为
+  // 原文以围栏开头而漏掉「未闭合【】」，剥完围栏后内部标记就会被误判为已定型。
+  let head = trimmed.replace(/^```(?:\w+)?\s*/, '');
+  // 已闭合的【】可以连续剥掉；剥完仍以【开头，说明这个标记还没闭合
+  while (/^【.*?】\s*/.test(head)) {
+    head = head.replace(/^【.*?】\s*/, '');
+  }
+  if (head.startsWith('【')) {
     return { text: '', headSettled: false };
   }
   // 「主持」->「主持发言：」会让开头两个字消失
-  if (isLeadingMarkerPending(trimmed)) {
+  if (isLeadingMarkerPending(head)) {
     return { text: '', headSettled: false };
   }
 
-  const stripped = stripLeadingMarkers(raw);
+  const stripped = head.replace(/^(主持发言|主持人|发言)\s*[:：]\s*/i, '');
 
   const rawLines = stripped.split('\n');
   const entries = rawLines

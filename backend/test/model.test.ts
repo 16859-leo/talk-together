@@ -117,6 +117,13 @@ test('分析：未闭合的【】随时会被整段剥离，不得提前输出',
   assert.equal(completed.text, '你们俩聊聊？');
 });
 
+test('分析：围栏后面的未闭合【】也要缓冲（不能只看原文开头）', () => {
+  const raw = `\`\`\`\n【bridge${'还有一个很长的说明'.repeat(3)}`;
+  const analysis = analyzeOutput(raw);
+  assert.equal(analysis.headSettled, false, '剥掉围栏后仍未闭合，不能提前定型');
+  assert.equal(analysis.text, '', '未闭合标记不能提前交给应用层');
+});
+
 test('清洗：长行末尾的冒号不会让整行被当作元话语丢弃', () => {
   const line = '你们周末一般都怎么过呀？最近我一直在琢磨到底要不要说说大家的安排：';
   const r = cleanOutput(line);

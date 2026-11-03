@@ -47,7 +47,7 @@ infrastructure/zhihu/      知乎数据源、缓存、适宜性筛选、备用�
 ## 测试
 
 ```bash
-npm test --prefix backend          # 78 项离线，零额度
+npm test --prefix backend          # 83 项离线，零额度
 # 真实冒烟（消耗少量额度）
 DEEPSEEK_API_KEY=... ZHIHU_CLI_PATH=... \
   node --experimental-strip-types test/smoke-capability.ts

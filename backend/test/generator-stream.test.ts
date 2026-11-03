@@ -73,26 +73,46 @@ function mockModelStages(
 
 /** 构造一次工具调用轮次的分片（v4 规范：finishReason 是 { unified, raw }）。 */
 function toolCallChunks(callId: string, toolName: string, args: unknown): Chunk[] {
+  return [...toolCallParts(callId, toolName, args), finishChunk('tool-calls')];
+}
+
+/** 同一步里的并行工具调用：多个 tool-call 之后只跟一个 finish。 */
+function parallelToolCallChunks(
+  calls: readonly { readonly id: string; readonly toolName: string; readonly args: unknown }[],
+): Chunk[] {
+  return [...calls.flatMap((call) => toolCallParts(call.id, call.toolName, call.args)), finishChunk('tool-calls')];
+}
+
+function toolCallParts(callId: string, toolName: string, args: unknown): Chunk[] {
   const input = JSON.stringify(args);
   return [
     { type: 'tool-input-start', id: callId, toolName },
     { type: 'tool-input-delta', id: callId, delta: input },
     { type: 'tool-input-end', id: callId },
     { type: 'tool-call', toolCallId: callId, toolName, input },
-    {
-      type: 'finish',
-      finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    },
   ];
+}
+
+function finishChunk(reason: 'stop' | 'tool-calls'): Chunk {
+  return {
+    type: 'finish',
+    finishReason: { unified: reason, raw: reason },
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+  };
 }
 
 /** 按关键词返回不同话题的上游，用于验证「多次检索时草稿归属」。 */
 class KeywordSource implements ZhihuContentSource {
   searchCalls = 0;
+  readonly #delayMs: number;
+
+  constructor(delayMs = 0) {
+    this.#delayMs = delayMs;
+  }
 
   async searchZhihu(keyword: string): Promise<readonly ZhihuSearchItem[]> {
     this.searchCalls += 1;
+    if (this.#delayMs > 0) await new Promise((r) => setTimeout(r, this.#delayMs));
     const isTravel = keyword.includes('旅行');
     return [
       isTravel
@@ -358,4 +378,126 @@ test('P2 草稿后取消：收到话题草稿后立刻 abort，不得再产出�
     (e: unknown) => e instanceof CapabilityError && e.code === 'AI_CANCELLED',
     '草稿 yield 恢复后必须重新检查取消状态',
   );
+});
+
+// ---------- 第三轮 review：并行选题 / 收尾草稿 / 末片取消 ----------
+
+test('P2 并行检索：同一步里的多个工具调用共享同一次选题', async () => {
+  const source = new KeywordSource(10);
+  const prompts: unknown[] = [];
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages(
+      [
+        parallelToolCallChunks([
+          { id: 'c1', toolName: 'search_zhihu_topic', args: { keyword: '旅行', count: 5 } },
+          { id: 'c2', toolName: 'search_zhihu_topic', args: { keyword: '音乐', count: 5 } },
+        ]),
+        textChunks(['你们有没有', '在路上遇到过', '特别难忘的事情？']),
+      ],
+      0,
+      prompts,
+    ),
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(
+    gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null })),
+  );
+  const draft = chunks.find((c) => c.kind === 'topic');
+  assert.ok(draft !== undefined && draft.kind === 'topic', '选题必须产出草稿');
+
+  // 两个并行调用只能采用同一条话题，且上游只被打一次
+  assert.equal(source.searchCalls, 1, '并行检索应共享同一次上游请求');
+  const travel = '旅行中遇到过什么难忘的经历？';
+  const music = '音乐现场让你印象最深的一次是哪次？';
+  const draftTitle = draft.topic.title;
+  assert.ok(draftTitle === travel || draftTitle === music);
+  const secondStepPrompt = JSON.stringify(prompts[1] ?? '');
+  assert.ok(secondStepPrompt.includes(draftTitle), '两次工具结果都应是草稿对应的话题');
+  assert.ok(
+    !secondStepPrompt.includes(draftTitle === travel ? music : travel),
+    '不得让并行调用返回两条不同话题',
+  );
+});
+
+test('P2 草稿补发：先出文本后调工具、零文本收尾时仍交付草稿', async () => {
+  const source = new KeywordSource();
+  const text = '你们周末一般都怎么过呀？是出门走走还是在家待着，';
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages([
+      // 同一步：先把话术写完，再调检索工具
+      [
+        { type: 'text-start', id: '1' },
+        { type: 'text-delta', id: '1', delta: text },
+        { type: 'text-end', id: '1' },
+        ...toolCallParts('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+        finishChunk('tool-calls'),
+      ],
+      // 下一步零文本结束：不会再进入文本循环里的草稿 yield
+      [finishChunk('stop')],
+    ]),
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(
+    gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null })),
+  );
+  const draft = chunks.find((c) => c.kind === 'topic');
+  assert.ok(draft !== undefined && draft.kind === 'topic', '零文本收尾也必须交付草稿');
+  assert.equal(draft.topic.title, '旅行中遇到过什么难忘的经历？');
+
+  const whole = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+  assert.equal(whole, text, '话术本身也要完整交付');
+});
+
+test('P2 末片后取消：收到最后一片再 abort，应抛 AI_CANCELLED 而非正常结束', async () => {
+  const controller = new AbortController();
+  const source = new KeywordSource();
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages([
+      toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 }),
+      textChunks(['你们周末都怎么过呀？'], 'stop'),
+    ]),
+    maxRetries: 0,
+  });
+
+  const it = gen.generate(
+    makeRequest({ purpose: 'topic', prompt: null, caller: null, signal: controller.signal }),
+  )[Symbol.asyncIterator]();
+
+  const first = await it.next();
+  assert.ok(first.done !== true && first.value.kind === 'topic', '首片是话题草稿');
+
+  const second = await it.next();
+  assert.ok(second.done !== true && second.value.kind === 'text', '第二片是收尾文本');
+
+  controller.abort();
+  await assert.rejects(
+    () => it.next(),
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_CANCELLED',
+    '最后一片之后、正常结束之前必须再检查取消状态',
+  );
+});
+
+test('P2 围栏+未闭合标记：补全后照常交付正文，不抛错也不泄露标记', async () => {
+  const gen = makeGen(
+    mockModel(
+      textChunks([
+        '```\n【bridge',
+        '还有一个很长的说明'.repeat(3),
+        '】你们周末都怎么过呀？',
+      ]),
+    ),
+  );
+  const chunks = await collect(gen.generate(makeRequest()));
+  const text = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+
+  assert.equal(text, '你们周末都怎么过呀？');
+  assert.ok(!text.includes('【'), '未闭合标记不得泄露');
 });
