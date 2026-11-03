@@ -10,6 +10,7 @@
 npm install
 npm run dev            # http://127.0.0.1:5173
 npm run typecheck      # tsc --noEmit
+npm test               # 回放 contracts 的 12 个 WS 场景
 npm run build          # tsc -b && vite build
 ```
 
@@ -65,8 +66,18 @@ src/
 
 - 创建房间页（`POST /rooms`）与房主创建流程；
 - 改资料、移出成员、关闭房间；
-- 断线期间的消息占位与更细的重连状态；
-- 单元测试：reducer 回放 `contracts/examples/ws/*` 的 12 个场景。
+- 断线期间的消息占位与更细的重连状态。
+
+## 测试
+
+`npm test` 会把 `contracts/examples/ws/` 的 12 个场景逐帧喂给 `applyServerMessage`，断言：
+
+- 首帧必为快照，`self` 与 `viewer` 一致；
+- 终态回复的状态与完整文本；
+- `forbiddenReplyIds` / `forbiddenMessageIds` 不出现（入房前已开始的回复不泄漏）；
+- 游标推进到场景最大序号，重复帧不再改变状态。
+
+另外三条针对归并逻辑的用例：快照整体替换、迟到事件被丢弃、增量只追加到同一条回复。
 
 ## 契约
 

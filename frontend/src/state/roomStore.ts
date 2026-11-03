@@ -11,6 +11,7 @@ import type {
 
 export interface RoomState {
   ready: boolean
+  closed: boolean
   self: SnapshotData['self'] | null
   room: Room | null
   members: ActiveMember[]
@@ -21,6 +22,7 @@ export interface RoomState {
 
 export const emptyState: RoomState = {
   ready: false,
+  closed: false,
   self: null,
   room: null,
   members: [],
@@ -54,6 +56,7 @@ function reduceEvent(state: RoomState, event: ServerMessage): RoomState {
     case 'room.snapshot':
       return {
         ready: true,
+        closed: false,
         self: event.data.self,
         room: event.data.room,
         members: event.data.members,
@@ -139,6 +142,35 @@ function reduceEvent(state: RoomState, event: ServerMessage): RoomState {
         cursor: Math.max(state.cursor, event.sequence),
       }
     }
+    case 'ai.invocation.updated': {
+      const next = event.data.invocation
+      const exists = state.invocations.some((item) => item.id === next.id)
+      return {
+        ...state,
+        invocations: exists
+          ? state.invocations.map((item) => (item.id === next.id ? next : item))
+          : [...state.invocations, next],
+        cursor: Math.max(state.cursor, event.sequence),
+      }
+    }
+    case 'room.updated':
+      return state.room
+        ? {
+            ...state,
+            room: {
+              ...state.room,
+              status: event.data.status,
+              hostRecoveryExpiresAt: event.data.hostRecoveryExpiresAt,
+            },
+            cursor: Math.max(state.cursor, event.sequence),
+          }
+        : state
+    case 'room.closed':
+      return {
+        ...state,
+        closed: true,
+        cursor: Math.max(state.cursor, event.sequence),
+      }
     default:
       return state
   }
@@ -149,6 +181,7 @@ function reducer(state: RoomState, action: Action): RoomState {
     case 'snapshot':
       return {
         ready: true,
+        closed: false,
         self: action.data.self,
         room: action.data.room,
         members: action.data.members,
