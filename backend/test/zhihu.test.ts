@@ -257,17 +257,34 @@ test('产出：搜索结果标记为 common 并带知乎来源', async () => {
   assert.equal(topics[0]?.sourceUrl, 'https://www.zhihu.com/question/1');
 });
 
-test('产出：热榜结果标记为 popular 且字段满足 NonBlankText', async () => {
+test('产出：热榜结果字段满足 NonBlankText，含真实热榜条目', async () => {
   const fake = new FakeSource(loadHotFixture());
   const source = new ZhihuTopicSource(fake);
 
-  const topics = await source.getPopularTopics();
+  const topics = await source.getPopularTopics({ limit: 5 });
+  assert.ok(topics.length > 0);
   for (const topic of topics) {
-    assert.equal(topic.kind, 'popular');
+    // 候选池混入备用话题以保证多样性，kind 可能是 popular 或 common
+    assert.ok(topic.kind === 'popular' || topic.kind === 'common');
     assert.ok(isNonBlankText(topic.title));
     assert.ok(isNonBlankText(topic.content));
-    assert.equal(topic.sourceLabel, '知乎热榜');
   }
+  // 池内应包含真实热榜来源的条目
+  assert.ok(topics.some((t) => t.sourceLabel === '知乎热榜'), '应含真实热榜话题');
+});
+
+test('轮换：缓存命中时连续取用给出不同起点，不总是同一条', async () => {
+  const fake = new FakeSource(loadHotFixture());
+  const source = new ZhihuTopicSource(fake);
+
+  const first = (await source.getPopularTopics({ limit: 3 }))[0];
+  const second = (await source.getPopularTopics({ limit: 3 }))[0];
+  const third = (await source.getPopularTopics({ limit: 3 }))[0];
+
+  assert.equal(fake.hotCalls, 1, '三次都应命中缓存，不重复打上游');
+  // 轮换后首条应发生变化（候选池 > limit）
+  const titles = new Set([first?.title, second?.title, third?.title]);
+  assert.ok(titles.size >= 2, `连续三次首条话题应有变化，实际：${[...titles].join(' | ')}`);
 });
 
 test('产出：空关键词直接回落，不调用上游', async () => {
@@ -277,4 +294,91 @@ test('产出：空关键词直接回落，不调用上游', async () => {
   const topics = await source.searchCommonTopics('   ', { interestTags: ['读书'] });
   assert.ok(topics.length > 0);
   assert.equal(fake.searchCalls, 0, '空关键词不应浪费额度');
+});
+
+// ---------- PR #5 review P2：共享请求的降级与取消隔离 ----------
+
+/** 可延迟 + 可失败的上游，用于构造真实的并发等待场景。 */
+class SlowSource implements ZhihuContentSource {
+  hotCalls = 0;
+  searchCalls = 0;
+  readonly #delayMs: number;
+  readonly #fail: boolean;
+
+  constructor(delayMs: number, fail = false) {
+    this.#delayMs = delayMs;
+    this.#fail = fail;
+  }
+
+  async #wait(): Promise<void> {
+    await new Promise((r) => setTimeout(r, this.#delayMs));
+    if (this.#fail) throw new CapabilityError('AI_UNAVAILABLE', '模拟上游故障');
+  }
+
+  async searchZhihu(): Promise<readonly ZhihuSearchItem[]> {
+    this.searchCalls += 1;
+    await this.#wait();
+    return [
+      { title: '你们都在哪儿拍过最满意的照片？', contentText: '聊聊拍照', url: 'https://z.com/1', authorName: null },
+    ];
+  }
+
+  async getHotList(): Promise<readonly ZhihuHotItem[]> {
+    this.hotCalls += 1;
+    await this.#wait();
+    return [{ title: '你小时候最喜欢玩什么？', summary: '', url: 'https://z.com/2' }];
+  }
+}
+
+test('P2 并发降级：上游故障时所有等待者都拿到备用池，而非异常', async () => {
+  const fake = new SlowSource(30, true);
+  const source = new ZhihuTopicSource(fake);
+
+  // 两个并发请求共享同一次上游调用
+  const [a, b] = await Promise.all([
+    source.getPopularTopics({ interestTags: ['美食'] }),
+    source.getPopularTopics({ interestTags: ['美食'] }),
+  ]);
+
+  assert.equal(fake.hotCalls, 1, '并发应合并为一次上游调用');
+  assert.ok(a.length > 0 && b.length > 0, '两个等待者都应拿到结果');
+  assert.equal(a[0]?.sourceLabel, null, '首个应回落备用池');
+  assert.equal(b[0]?.sourceLabel, null, '并发等待者也应回落备用池，而非收到异常');
+});
+
+test('P2 搜索并发降级：无结果时等待者拿到备用池而非空数组', async () => {
+  // 上游成功但返回被筛掉，最终为空 -> 应回落
+  const fake = new FakeSource([], []); // 搜索返回空
+  const source = new ZhihuTopicSource(fake);
+
+  const [a, b] = await Promise.all([
+    source.searchCommonTopics('露营', { interestTags: ['露营'] }),
+    source.searchCommonTopics('露营', { interestTags: ['露营'] }),
+  ]);
+  assert.ok(a.length > 0 && b.length > 0, '两个等待者都应拿到备用话题');
+});
+
+test('P2 取消隔离：abort 首个调用者不影响并发的第二个', async () => {
+  const fake = new SlowSource(50, false);
+  const source = new ZhihuTopicSource(fake);
+
+  const c1 = new AbortController();
+  const c2 = new AbortController();
+
+  const p1 = source.getPopularTopics({ interestTags: ['美食'], signal: c1.signal });
+  const p2 = source.getPopularTopics({ interestTags: ['美食'], signal: c2.signal });
+
+  // 只取消第一个
+  c1.abort();
+
+  await assert.rejects(
+    () => p1,
+    (e: unknown) => e instanceof CapabilityError && e.code === 'AI_CANCELLED',
+    '被取消者应抛 AI_CANCELLED',
+  );
+
+  // 第二个未取消，应正常拿到结果
+  const r2 = await p2;
+  assert.ok(r2.length > 0, '未取消的并发请求不应被连累');
+  assert.equal(fake.hotCalls, 1, '仍只有一次共享上游调用');
 });

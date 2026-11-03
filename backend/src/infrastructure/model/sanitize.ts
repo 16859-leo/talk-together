@@ -15,7 +15,7 @@
 /** 引导性元话语线索：含引导词且以冒号结尾。 */
 const META_CUE = /(追问|回应|发言|提问|说|问|如下|这样)[^。？！\n]{0,6}[:：]/;
 
-const MAX_TEXT_LENGTH = 60;
+const MAX_TEXT_LENGTH = 70;
 /** 冒号后至少要有这么多字才认定前半段是元话语。 */
 const MIN_BODY_AFTER_CUE = 8;
 /** 元话语线索的搜索范围，超出则认为冒号属于正文。 */

@@ -169,7 +169,7 @@ test('提示词：无共同兴趣时引导走热榜', () => {
   assert.ok(p.includes('get_hot_list'));
 });
 
-test('提示词：邀答分支点名目标且声明不调用工具', () => {
+test('提示词：邀答分支点名目标、带出话题标题且不调用工具', () => {
   const target: MemberView = { memberId: 'c', nickname: 'Momo', interestTags: [], bio: '' };
   const p = buildUserPrompt(
     makeRequest({
@@ -179,8 +179,17 @@ test('提示词：邀答分支点名目标且声明不调用工具', () => {
     }),
   );
   assert.ok(p.includes('Momo'));
-  assert.ok(p.includes('不想回答也没关系'));
+  // 关键：邀答必须带出当前话题的具体标题，而不是笼统说「这个话题」
+  assert.ok(p.includes('你们周末怎么过？'), '应带出当前话题标题');
+  assert.ok(p.includes('不要只说'), '应要求说清话题而非笼统');
   assert.ok(p.includes('不要调用任何工具'));
+});
+
+test('提示词：reply 分支要求有实质内容', () => {
+  const caller: MemberView = { memberId: 'a', nickname: '小林', interestTags: [], bio: '' };
+  const p = buildUserPrompt(makeRequest({ purpose: 'reply', caller, prompt: '找个话题' }));
+  assert.ok(p.includes('实质内容'));
+  assert.ok(p.includes('不要用大段客套'));
 });
 
 test('提示词：reply 分支带上房主正文', () => {

@@ -52,6 +52,23 @@ export class ZhihuTopicSource {
   #upstreamHotCalls = 0;
   #upstreamSearchCalls = 0;
 
+  /** 缓存命中时的轮转游标，让同一批热榜在多次调用间轮换起点。 */
+  #hotRotation = 0;
+
+  /**
+   * 从候选列表中轮转取 limit 条，且每次调用都推进起点。
+   * 只要池内有 2 条以上，连续调用返回的「第一条」就会不同 ——
+   * 这是关键：模型工具通常请求较大的 limit（如 10），若只在 pool>limit 时
+   * 才轮转，limit 覆盖整池就永远原样返回、第一条不变，导致话题重复。
+   */
+  #rotate(pool: readonly TopicCandidate[], limit: number): readonly TopicCandidate[] {
+    if (pool.length <= 1) return pool;
+    const start = this.#hotRotation % pool.length;
+    this.#hotRotation += 1;
+    const rotated = [...pool.slice(start), ...pool.slice(0, start)];
+    return rotated.slice(0, limit);
+  }
+
   constructor(source: ZhihuContentSource, options: TopicSourceOptions = {}) {
     this.#source = source;
     this.#hotTtl = options.hotCacheTtlMs ?? 15 * 60_000;
@@ -83,45 +100,92 @@ export class ZhihuTopicSource {
       return cached.value;
     }
 
-    const existing = this.#searchInFlight.get(key);
-    if (existing !== undefined) return existing;
+    // 共享上游请求不绑定任一调用者的 signal，避免某个房间取消连累其他等待者。
+    let shared = this.#searchInFlight.get(key);
+    if (shared === undefined) {
+      shared = (async (): Promise<readonly TopicCandidate[]> => {
+        this.#upstreamSearchCalls += 1;
+        const items = await this.#source.searchZhihu(normalized, count);
+        return items.flatMap<TopicCandidate>((item) => {
+          // 搜索结果与热榜适用同一套适宜性标准：课程讲义、攻略、清单
+          // 虽与关键词相关，但不是能让陌生人聊起来的话题。
+          if (!isIcebreakingTitle(item.title).ok) return [];
+          const content = clip(item.contentText.length > 0 ? item.contentText : item.title);
+          if (!isNonBlankText(content)) return [];
+          return [
+            {
+              title: clip(item.title, 60),
+              content,
+              kind: 'common',
+              sourceLabel: item.authorName === null ? '知乎' : `知乎 · ${item.authorName}`,
+              sourceUrl: item.url,
+            },
+          ];
+        });
+      })();
+      this.#searchInFlight.set(key, shared);
+      // 请求结束即清理 in-flight，无论成败。缓存写入在各调用者侧按结果处理。
+      shared.finally(() => {
+        if (this.#searchInFlight.get(key) === shared) this.#searchInFlight.delete(key);
+      }).catch(() => {});
+    }
 
-    const task = (async (): Promise<readonly TopicCandidate[]> => {
-      this.#upstreamSearchCalls += 1;
-      const items = await this.#source.searchZhihu(normalized, count, options.signal);
-      return items.flatMap<TopicCandidate>((item) => {
-        // 搜索结果与热榜适用同一套适宜性标准：课程讲义、攻略、清单
-        // 虽与关键词相关，但不是能让陌生人聊起来的话题。
-        if (!isIcebreakingTitle(item.title).ok) return [];
-        const content = clip(item.contentText.length > 0 ? item.contentText : item.title);
-        if (!isNonBlankText(content)) return [];
-        return [
-          {
-            title: clip(item.title, 60),
-            content,
-            kind: 'common',
-            sourceLabel: item.authorName === null ? '知乎' : `知乎 · ${item.authorName}`,
-            sourceUrl: item.url,
-          },
-        ];
-      });
-    })();
-
-    this.#searchInFlight.set(key, task);
-    try {
-      const value = await task;
-      if (value.length === 0) {
-        return pickFallbackTopics(options.interestTags ?? [], count);
-      }
+    // 每个调用者独立响应自己的取消，并对共享结果各自做降级。
+    return this.#awaitShared(shared, options.signal, () =>
+      pickFallbackTopics(options.interestTags ?? [], count),
+    ).then((value) => {
+      if (value.length === 0) return pickFallbackTopics(options.interestTags ?? [], count);
       this.#searchCache.set(key, { value, expiresAt: this.#now() + this.#searchTtl });
       return value;
+    });
+  }
+
+  /**
+   * 等待共享上游请求，但只对「本调用者自己的」signal 响应取消；
+   * 上游失败时走各自的降级回调，不把异常泄露给等待者。
+   */
+  async #awaitShared(
+    shared: Promise<readonly TopicCandidate[]>,
+    signal: AbortSignal | undefined,
+    fallback: () => readonly TopicCandidate[],
+  ): Promise<readonly TopicCandidate[]> {
+    if (signal?.aborted === true) throw new CapabilityError('AI_CANCELLED', '调用已取消');
+
+    const cancelled = new Promise<never>((_, reject) => {
+      if (signal === undefined) return;
+      signal.addEventListener(
+        'abort',
+        () => reject(new CapabilityError('AI_CANCELLED', '调用已取消')),
+        { once: true },
+      );
+    });
+
+    try {
+      return await Promise.race([shared, cancelled]);
     } catch (error) {
       if (error instanceof CapabilityError && error.code === 'AI_CANCELLED') throw error;
       // PRD 第 7 节：知乎接口不可用时使用备用精选话题，基础聊天继续。
-      return pickFallbackTopics(options.interestTags ?? [], count);
-    } finally {
-      this.#searchInFlight.delete(key);
+      return fallback();
     }
+  }
+
+  /**
+   * 合并热榜候选与备用话题，组成足够大的轮换池。
+   * 热榜话题排在前（时效性优先），备用话题补足多样性。
+   */
+  #mergePool(
+    hot: readonly TopicCandidate[],
+    interestTags: readonly string[],
+  ): readonly TopicCandidate[] {
+    const fallback = pickFallbackTopics(interestTags, 8);
+    const seen = new Set<string>();
+    const merged: TopicCandidate[] = [];
+    for (const topic of [...hot, ...fallback]) {
+      if (seen.has(topic.title)) continue;
+      seen.add(topic.title);
+      merged.push(topic);
+    }
+    return merged;
   }
 
   /**
@@ -132,49 +196,47 @@ export class ZhihuTopicSource {
     options: { readonly limit?: number; readonly interestTags?: readonly string[]; readonly signal?: AbortSignal } = {},
   ): Promise<readonly TopicCandidate[]> {
     const limit = options.limit ?? 5;
+    const tags = options.interestTags ?? [];
+    const fallback = (): readonly TopicCandidate[] => pickFallbackTopics(tags, limit);
 
     const cached = this.#hotCache;
     if (cached !== null && cached.expiresAt > this.#now()) {
-      return cached.value.length > 0
-        ? cached.value.slice(0, limit)
-        : pickFallbackTopics(options.interestTags ?? [], limit);
+      return this.#rotate(this.#mergePool(cached.value, tags), limit);
     }
 
-    if (this.#hotInFlight !== null) {
-      const shared = await this.#hotInFlight;
-      return shared.length > 0 ? shared.slice(0, limit) : pickFallbackTopics(options.interestTags ?? [], limit);
+    // 共享上游请求不绑定任一调用者的 signal。缓存写入在共享任务内完成，
+    // 保证只写一次，等待者直接复用。
+    let shared = this.#hotInFlight;
+    if (shared === null) {
+      shared = (async (): Promise<readonly TopicCandidate[]> => {
+        this.#upstreamHotCalls += 1;
+        const items = await this.#source.getHotList(30);
+        const screened = screenHotItems(items);
+        const value = screened.accepted.flatMap<TopicCandidate>(({ item }) => {
+          const content = clip(item.summary.length > 0 ? item.summary : item.title);
+          if (!isNonBlankText(content)) return [];
+          return [
+            {
+              title: clip(item.title, 60),
+              content,
+              kind: 'popular',
+              sourceLabel: '知乎热榜',
+              sourceUrl: item.url,
+            },
+          ];
+        });
+        // 即使筛选后为空也缓存，避免反复打同一份不可用的热榜。
+        this.#hotCache = { value, expiresAt: this.#now() + this.#hotTtl };
+        return value;
+      })();
+      this.#hotInFlight = shared;
+      shared.finally(() => {
+        if (this.#hotInFlight === shared) this.#hotInFlight = null;
+      }).catch(() => {});
     }
 
-    const task = (async (): Promise<readonly TopicCandidate[]> => {
-      this.#upstreamHotCalls += 1;
-      const items = await this.#source.getHotList(30, options.signal);
-      const screened = screenHotItems(items);
-      return screened.accepted.flatMap<TopicCandidate>(({ item }) => {
-        const content = clip(item.summary.length > 0 ? item.summary : item.title);
-        if (!isNonBlankText(content)) return [];
-        return [
-          {
-            title: clip(item.title, 60),
-            content,
-            kind: 'popular',
-            sourceLabel: '知乎热榜',
-            sourceUrl: item.url,
-          },
-        ];
-      });
-    })();
-
-    this.#hotInFlight = task;
-    try {
-      const value = await task;
-      // 即使筛选后为空也缓存，避免反复打同一份不可用的热榜。
-      this.#hotCache = { value, expiresAt: this.#now() + this.#hotTtl };
-      return value.length > 0 ? value.slice(0, limit) : pickFallbackTopics(options.interestTags ?? [], limit);
-    } catch (error) {
-      if (error instanceof CapabilityError && error.code === 'AI_CANCELLED') throw error;
-      return pickFallbackTopics(options.interestTags ?? [], limit);
-    } finally {
-      this.#hotInFlight = null;
-    }
+    const value = await this.#awaitShared(shared, options.signal, fallback);
+    // 合并备用池扩充候选并轮换起点，保证多次调用话题有变化。
+    return this.#rotate(this.#mergePool(value, tags), limit);
   }
 }

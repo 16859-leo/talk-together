@@ -19,7 +19,11 @@ export const SYSTEM_PROMPT = `你是多人破冰聊天室「搭个话」的 AI �
 - 不催促沉默的成员，不强制任何人发言，不制造争论。
 
 输出要求：
-- 只输出要对房间说的那句话本身，40 字以内，口语化。
+- 必须输出一句要对房间说的话；即使调用了工具取得话题，也要在工具之后紧接着说出这句话，不能只调工具不说话。
+- 只输出那句话本身，口语化。
+- 优先把话题的具体内容说清楚，让成员一听就知道在聊什么、能接什么；
+  客套和缓和语（如「不想说也没关系」）最多一句且简短，不能挤占话题本身。
+- 控制在 55 字以内，但宁可话题讲具体，也不要为凑短而把话题说得笼统空泛。
 - 不要解释、不要分点、不要加「主持发言：」之类前缀。
 - 不要复述成员说过的原话。
 - 不要使用 Markdown 标记。`;
@@ -74,23 +78,34 @@ export function buildUserPrompt(request: GenerationRequest): string {
       return [
         ...base,
         hint,
-        '取得话题列表后，先用 select_topic 声明你采用的是哪一条，再用一句话把它抛给房间，让大家容易接话。',
+        '工具会直接返回一条已选定的话题，你照它用一句话抛给房间，让大家容易接话，不要自己另选或编造话题。',
       ].join('\n\n');
     }
     case 'invitation': {
       const target = request.invitedMember;
       const name = target === null ? '某位成员' : target.nickname;
+      const topicHint =
+        request.currentTopic === null
+          ? '当前话题'
+          : `当前话题「${request.currentTopic.title}」`;
       return [
         ...base,
-        `请邀请 ${name} 就当前话题说说自己的看法或经历。`,
-        '语气轻松，说明不想回答也没关系，不要施加压力。不要调用任何工具。',
+        `请邀请 ${name} 就${topicHint}分享具体的看法或经历。`,
+        '务必把话题的具体内容点出来，让 ' + name + ' 清楚在聊什么、可以从哪个角度接；' +
+          '不要只说「聊聊这个话题」这种笼统的话。',
+        '可以在结尾用一句简短的话说明不想说也没关系，但这句不要超过十个字，也不要占掉话题。不要调用任何工具。',
       ].join('\n\n');
     }
     case 'reply': {
       const asked = request.prompt?.trim() ?? '';
       const caller = request.caller?.nickname ?? '房主';
       const ask = asked.length > 0 ? `${caller} 对你说：${asked}` : `${caller} 请你说点什么。`;
-      return [...base, ask, '如果需要具体话题素材，可以调用工具；否则直接回应。'].join('\n\n');
+      return [
+        ...base,
+        ask,
+        '回应要有实质内容：如果是抛话题，就把话题讲具体，让大家能接；' +
+          '不要用大段客套或铺垫占掉篇幅。如果需要具体话题素材，可以调用工具；否则直接回应。',
+      ].join('\n\n');
     }
     default: {
       const exhaustive: never = request.purpose;

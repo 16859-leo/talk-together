@@ -75,14 +75,14 @@ for (const { name, request } of cases) {
     continue;
   }
   const topic = chunks.find((c) => c.kind === 'topic');
-  const text = chunks.find((c) => c.kind === 'text');
+  const speech = chunks.filter((c) => c.kind === 'text').map((c) => (c.kind === 'text' ? c.delta : '')).join('');
   console.log(`[${name}] ${Date.now() - started}ms`);
   if (topic?.kind === 'topic') {
     console.log(`  话题(${topic.topic.kind})：${topic.topic.title}`);
     console.log(`  来源：${topic.topic.sourceLabel ?? '备用池'}`);
   }
-  if (text?.kind === 'text') {
-    console.log(`  发言(${text.delta.length}字)：${text.delta}`);
+  if (speech.length > 0) {
+    console.log(`  发言(${speech.length}字)：${speech}`);
   }
 }
 

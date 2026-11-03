@@ -12,7 +12,7 @@
  * 循环防护：DeepSeek 官方承认存在循环工具调用与空响应风险，故设轮次上限与重复检测。
  */
 
-import { streamText, stepCountIs, tool, type ToolSet } from 'ai';
+import { streamText, stepCountIs, tool, type ToolSet, type LanguageModel } from 'ai';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
 
@@ -24,31 +24,39 @@ import { cleanOutput, rejectOutput } from './sanitize.ts';
 import type { GenerationChunk, GenerationRequest, TextGenerator } from './types.ts';
 
 export interface DeepSeekGeneratorOptions {
-  /** 从环境变量注入，本模块不落盘、不记录、不转发。 */
-  readonly apiKey: string;
+  /** 从环境变量注入，本模块不落盘、不记录、不转发。测试用 modelOverride 时可省略。 */
+  readonly apiKey?: string;
   readonly model?: string;
   /** 工具调用轮次上限，防御官方已知的循环调用风险。 */
   readonly maxSteps?: number;
   /** 输出不合格时的重试次数。 */
   readonly maxRetries?: number;
+  /** 注入自定义语言模型，仅用于测试（如 MockLanguageModelV4）；生产留空。 */
+  readonly modelOverride?: LanguageModel;
 }
 
 const DEFAULT_MODEL = 'deepseek-flash';
-/** 检索 + 声明选择 + 作答，留一步余量。 */
-const DEFAULT_MAX_STEPS = 4;
-const DEFAULT_MAX_RETRIES = 1;
+/** 检索 + 作答两步即可；去掉 select_topic 后不再需要额外步数。 */
+const DEFAULT_MAX_STEPS = 3;
+/** 零文本/不合格重试次数。单条话题时模型偶尔只调工具不作答，多留一次重试。 */
+const DEFAULT_MAX_RETRIES = 2;
 
 export class DeepSeekTextGenerator implements TextGenerator {
-  readonly #provider: ReturnType<typeof createDeepSeek>;
-  readonly #model: string;
+  readonly #model: LanguageModel;
   readonly #maxSteps: number;
   readonly #maxRetries: number;
   readonly #topics: ZhihuTopicSource;
 
   constructor(topics: ZhihuTopicSource, options: DeepSeekGeneratorOptions) {
     this.#topics = topics;
-    this.#provider = createDeepSeek({ apiKey: options.apiKey });
-    this.#model = options.model ?? DEFAULT_MODEL;
+    if (options.modelOverride !== undefined) {
+      this.#model = options.modelOverride;
+    } else {
+      if (options.apiKey === undefined || options.apiKey.length === 0) {
+        throw new Error('DeepSeekTextGenerator 需要 apiKey 或 modelOverride');
+      }
+      this.#model = createDeepSeek({ apiKey: options.apiKey })(options.model ?? DEFAULT_MODEL);
+    }
     this.#maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   }
@@ -57,50 +65,83 @@ export class DeepSeekTextGenerator implements TextGenerator {
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
       const picked: TopicCandidate[] = [];
       const seenCalls = new Set<string>();
-      // 模型通过 select_topic 声明实际采用的话题，避免草稿与发言不一致
-      const selection: { index: number | null } = { index: null };
-      let raw = '';
+      const tools = this.#buildTools(request, picked, seenCalls);
 
-      const tools = this.#buildTools(request, picked, seenCalls, selection);
+      // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
+      // invitation 不需要工具：目标已由应用层选定，只生成话术。
+      const toolOption = request.purpose === 'invitation' ? {} : { tools };
+
+      // SDK 把错误放入流事件而非抛出，用 onError 显式捕获再映射。
+      let streamError: unknown = null;
+
+      const result = streamText({
+        model: this.#model,
+        system: SYSTEM_PROMPT,
+        prompt: buildUserPrompt(request),
+        ...toolOption,
+        stopWhen: stepCountIs(this.#maxSteps),
+        abortSignal: request.signal,
+        providerOptions: { deepseek: { thinking: { type: 'disabled' } } },
+        onError: ({ error }) => {
+          streamError = error;
+        },
+      });
+
+      // 边生成边产出：清洗有状态，逐段累积原始文本后对「新增的干净部分」做增量 yield。
+      // 这样应用层能实时拿到增量，失败/取消时也能保留已输出文字。
+      let raw = '';
+      let emitted = '';
+      let topicSent = false;
 
       try {
-        // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
-        // invitation 不需要工具：目标已由应用层选定，只生成话术。
-        const toolOption = request.purpose === 'invitation' ? {} : { tools };
-
-        const result = streamText({
-          model: this.#provider(this.#model),
-          system: SYSTEM_PROMPT,
-          prompt: buildUserPrompt(request),
-          ...toolOption,
-          stopWhen: stepCountIs(this.#maxSteps),
-          abortSignal: request.signal,
-          providerOptions: { deepseek: { thinking: { type: 'disabled' } } },
-        });
-
         for await (const delta of result.textStream) {
+          if (request.signal.aborted) {
+            throw new CapabilityError('AI_CANCELLED', '调用已取消');
+          }
           raw += delta;
+
+          // 话题草稿一旦确定就先行发出，供应用层尽早更新当前话题。
+          if (request.purpose === 'topic' && !topicSent && picked[0] !== undefined) {
+            topicSent = true;
+            yield { kind: 'topic', topic: picked[0] };
+          }
+
+          const cleaned = cleanOutput(raw);
+          if (cleaned.length > emitted.length && cleaned.startsWith(emitted)) {
+            const increment = cleaned.slice(emitted.length);
+            emitted = cleaned;
+            yield { kind: 'text', delta: increment };
+          }
         }
       } catch (error) {
         throw toCapabilityError(error, request.signal);
       }
 
-      const text = cleanOutput(raw);
-      const rejected = text.length === 0 ? 'TOO_SHORT' : rejectOutput(text, request.recentMessages);
+      // 流正常结束，但 SDK 可能把错误放进了事件：此时已产出的文字应保留，错误照抛。
+      if (streamError !== null) {
+        throw toCapabilityError(streamError, request.signal);
+      }
+      if (request.signal.aborted) {
+        throw new CapabilityError('AI_CANCELLED', '调用已取消');
+      }
 
-      if (rejected === null) {
-        // 先给话题草稿，应用层据此决定是否发布 topic.changed。
-        // 优先用模型显式选定的那条；未声明则回退到第一条。
-        const chosen = selection.index === null ? picked[0] : picked[selection.index];
-        if (request.purpose === 'topic' && chosen !== undefined) {
-          yield { kind: 'topic', topic: chosen };
+      const finalText = cleanOutput(raw);
+      const rejected = finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
+      // 选题成功必须有草稿：模型不调工具直接作答时 picked 为空，视为未完成，触发重试。
+      const topicMissing = request.purpose === 'topic' && picked[0] === undefined;
+
+      if (rejected === null && !topicMissing) {
+        // 补发清洗后可能新增的尾部（如末尾标点在流结束时才补全）。
+        if (finalText.length > emitted.length && finalText.startsWith(emitted)) {
+          yield { kind: 'text', delta: finalText.slice(emitted.length) };
         }
-        yield { kind: 'text', delta: text };
         return;
       }
 
-      if (request.signal.aborted) {
-        throw new CapabilityError('AI_CANCELLED', '调用已取消');
+      // 本次不合格。已经 yield 过增量时不能静默重试（会导致重复文本），
+      // 因此只有在尚未产出任何内容时才允许重试，否则直接抛错由应用层处理。
+      if (emitted.length > 0 || topicSent) {
+        throw new CapabilityError('AI_PROVIDER_ERROR', '模型输出不完整');
       }
     }
 
@@ -113,7 +154,6 @@ export class DeepSeekTextGenerator implements TextGenerator {
     request: GenerationRequest,
     picked: TopicCandidate[],
     seenCalls: Set<string>,
-    selection: { index: number | null },
   ): ToolSet {
     const shared = commonInterestTags(request.members);
     const allTags = [...new Set(request.members.flatMap((m) => m.interestTags))];
@@ -148,18 +188,20 @@ export class DeepSeekTextGenerator implements TextGenerator {
             signal: request.signal,
           });
           picked.push(...topics);
-          // 带序号返回，便于模型在后续 select_topic 中指明实际采用的是哪条
-          return {
-            topics: topics.map((t, i) => ({ index: i + 1, title: t.title, content: t.content })),
-          };
+          // 只返回首条（已由数据源轮换选定），模型据此写话术，不自行挑选，
+          // 以保证草稿与发言一致、且话题随轮换变化。
+          const top = topics[0];
+          return top === undefined
+            ? { topic: null, hint: '没有找到合适的话题，请换个关键词或改用热榜' }
+            : { topic: { title: top.title, content: top.content } };
         },
       }),
 
       get_hot_list: tool({
         description:
-          '获取知乎热榜中适合破冰的话题。仅当成员兴趣没有交集、无法确定共同关键词时调用；返回结果已过滤掉争议性和垂直话题。',
+          '获取知乎热榜中适合破冰的话题。仅当成员兴趣没有交集、无法确定共同关键词时调用；返回已选定的那一条，直接据此向房间抛话题。',
         inputSchema: z.object({
-          limit: z.number().int().min(1).max(30).default(10),
+          limit: z.number().int().min(1).max(5).default(3),
         }),
         execute: async ({ limit }) => {
           guard('get_hot_list', { limit });
@@ -169,25 +211,10 @@ export class DeepSeekTextGenerator implements TextGenerator {
             signal: request.signal,
           });
           picked.push(...topics);
-          return {
-            topics: topics.map((t, i) => ({ index: i + 1, title: t.title, content: t.content })),
-          };
-        },
-      }),
-
-      select_topic: tool({
-        description:
-          '声明你最终采用了哪一条话题。取得话题列表后必须调用一次，传入该条的 index，然后再说出要对房间讲的话。',
-        inputSchema: z.object({
-          index: z.number().int().min(1).describe('所选话题在列表中的序号'),
-        }),
-        execute: async ({ index }) => {
-          // 不做 guard：这是终局声明，重复调用说明模型改了主意，以最后一次为准
-          if (index >= 1 && index <= picked.length) {
-            selection.index = index - 1;
-            return { ok: true };
-          }
-          return { ok: false, reason: '序号超出范围，请从列表中选择' };
+          const top = topics[0];
+          return top === undefined
+            ? { topic: null, hint: '暂无合适话题' }
+            : { topic: { title: top.title, content: top.content } };
         },
       }),
     };
