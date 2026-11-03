@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ProfileForm, type JoinValues } from '../features/join/ProfileForm'
 import { ApiError, getClientConfig } from '../shared/api/client'
+import { errorText } from '../shared/api/errors'
 import { createRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
 import { clearBootstrap, loadBootstrap, saveSession } from '../state/session'
@@ -14,11 +15,6 @@ const FALLBACK_POLICY: ValidationPolicy = {
   interestTags: { minItems: 1, maxItems: null },
 }
 
-const ERROR_TEXT: Record<string, string> = {
-  VALIDATION_ERROR: '资料没通过校验，看看标红的输入框',
-  SERVICE_UNAVAILABLE: '服务暂时不可用，稍后再试',
-  NETWORK: '网络不太稳，稍后再试',
-}
 
 export default function CreatePage() {
   const navigate = useNavigate()
@@ -78,7 +74,7 @@ export default function CreatePage() {
             Object.fromEntries(caught.fieldErrors.map((item) => [item.path, item.message])),
           )
         }
-        setError(ERROR_TEXT[caught.code] ?? caught.message)
+        setError(errorText(caught.code, caught.message))
       } else {
         setError('房间没建成，稍后再试')
       }

@@ -4,7 +4,21 @@ import type {
   FieldError,
 } from './types'
 
-const BASE = '/api/v1'
+/**
+ * 默认走同源 + Vite 代理；联调时用 VITE_API_BASE 指向真实后端，
+ * 例如 VITE_API_BASE=http://127.0.0.1:8787/api/v1
+ */
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
+
+/** 契约版本对不上只提醒一次，不打断联调。 */
+let versionWarned = false
+function checkContractVersion(value: string | null) {
+  if (!value || versionWarned || !import.meta.env.DEV) return
+  if (value !== '0.1.0') {
+    versionWarned = true
+    console.warn(`[contract] 后端返回 ${value}，前端按 0.1.0 实现，字段可能对不上`)
+  }
+}
 
 interface Envelope<T> {
   code: string
@@ -71,6 +85,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       message: '网络好像不太稳，稍后再试',
     })
   }
+
+  checkContractVersion(response.headers.get('X-Contract-Version'))
 
   const raw = (await response.json().catch(() => null)) as Envelope<T> | null
 

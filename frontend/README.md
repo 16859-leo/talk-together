@@ -85,6 +85,17 @@ src/
 
 另外三条针对归并逻辑的用例：快照整体替换、迟到事件被丢弃、增量只追加到同一条回复。
 
+## 联调
+
+后端按同一契约实现后，把前端指向它即可（不动代码）：
+
+```bash
+echo "VITE_API_BASE=http://127.0.0.1:8787/api/v1" > .env.local
+npm run dev
+```
+
+接口清单、CORS 要求、响应语义与验收场景见 [docs/frontend/integration.md](../docs/frontend/integration.md)。
+
 ## 契约
 
 类型来自 `../contracts`（`file:` 依赖），只做 `import type`：

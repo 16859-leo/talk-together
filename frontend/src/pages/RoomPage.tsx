@@ -7,7 +7,7 @@ import { InviteDialog } from '../features/room/InviteDialog'
 import { ProfileDialog } from '../features/room/ProfileDialog'
 import type { JoinValues } from '../features/join/ProfileForm'
 import { ApiError, getClientConfig } from '../shared/api/client'
-import { getSelf, leaveRoom, removeMember, sendMessage, updateSelf } from '../shared/api/room'
+import { closeRoom, getSelf, leaveRoom, removeMember, sendMessage, updateSelf } from '../shared/api/room'
 import type { ActiveMember, MemberMessage, ValidationPolicy } from '../shared/api/types'
 import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
 import { demoCursor, demoSnapshot } from '../state/demo'
@@ -56,6 +56,7 @@ export default function RoomPage() {
   const [profileFieldErrors, setProfileFieldErrors] = useState<Record<string, string>>({})
   const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
   const pendingSend = useRef<{ id: string; text: string } | null>(null)
+  const channelRef = useRef<BroadcastChannel | null>(null)
 
   const session = useMemo<RoomSession | null>(
     () => loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null),
@@ -77,8 +78,9 @@ export default function RoomPage() {
     }
   }, [])
 
-  // 后端未接时先用本地快照撑起界面；收到 WS 快照会被整体替换。
+  // 只有开发态才用本地快照兜底；生产里必须等真实快照。
   useEffect(() => {
+    if (!import.meta.env.DEV) return
     if (!state.ready) {
       dispatch({ type: 'snapshot', data: demoSnapshot, cursor: demoCursor })
     }
@@ -145,6 +147,23 @@ export default function RoomPage() {
       })
     }
   }, [state.ready, state.self, state.members, session])
+
+  // 同一浏览器的多个标签页共享身份：退出或关房时要一起结束
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return undefined
+    const channel = new BroadcastChannel(`tt:${roomId || 'room_demo'}`)
+    channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === 'left' || event.data?.type === 'closed') {
+        clearSession(roomId)
+        navigate('/')
+      }
+    }
+    channelRef.current = channel
+    return () => {
+      channelRef.current = null
+      channel.close()
+    }
+  }, [roomId, navigate])
 
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
@@ -228,6 +247,8 @@ export default function RoomPage() {
   // 发送走 REST，和 WS 通不通没关系：只有房间关了才禁止输入。
   const composerDisabled = state.closed
   const statusText = STATUS_TEXT[status]
+  const runningInvocation = state.invocations.find((item) => item.status === 'running')
+  const queuedCount = state.invocations.filter((item) => item.status === 'queued').length
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
     if (!session) {
@@ -318,12 +339,15 @@ export default function RoomPage() {
     setLeaveOpen(false)
     if (session) {
       try {
-        await leaveRoom(roomId || 'room_demo', session)
+        // 房主的「退出」等价于关房，走单独接口更明确
+        if (canMention) await closeRoom(roomId || 'room_demo', session)
+        else await leaveRoom(roomId || 'room_demo', session)
       } catch {
         /* 退出失败也把本地收干净，避免卡在房间里 */
       }
     }
     clearSession(roomId)
+    channelRef.current?.postMessage({ type: canMention ? 'closed' : 'left' })
     navigate('/')
   }
 
@@ -544,16 +568,28 @@ export default function RoomPage() {
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-[16px] font-bold">AI 导播</h2>
                 <span className="flex items-center gap-1.5 text-[12px] text-[#3f6156]">
-                  <i className="h-1.5 w-1.5 rounded-full bg-sage" />
-                  正在生成
+                  <i
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      runningInvocation ? 'animate-pulse bg-sage-deep' : 'bg-sage'
+                    }`}
+                  />
+                  {runningInvocation ? '生成中' : queuedCount > 0 ? '排队中' : '待命'}
                 </span>
               </div>
-              <p className="text-[16px] font-bold leading-snug text-[#33524a]">
-                回应 {selfMember?.profile.nickname ?? '房主'}，正在换话题
+              <p className="text-[15px] font-bold leading-snug text-[#33524a]">
+                {runningInvocation
+                  ? `回应 ${runningInvocation.caller?.nickname ?? '房主'} · ${
+                      runningInvocation.source === 'automatic' ? '冷场补话' : '房主调用'
+                    }`
+                  : queuedCount > 0
+                    ? `还有 ${queuedCount} 个调用在排队`
+                    : '在听，不插话'}
               </p>
-              <div className="mt-2 inline-flex rounded-full bg-[rgba(124,185,168,.16)] px-3 py-1 text-[12px] text-[#42645a]">
-                后面还有 1 项 · 阿岚
-              </div>
+              {queuedCount > 0 && runningInvocation && (
+                <div className="mt-2 inline-flex rounded-full bg-[rgba(124,185,168,.16)] px-3 py-1 text-[12px] text-[#42645a]">
+                  后面还有 {queuedCount} 项
+                </div>
+              )}
             </div>
 
             <hr className="rule" />
@@ -561,8 +597,10 @@ export default function RoomPage() {
             <div className="pb-1">
               <h2 className="mb-1.5 text-[16px] font-bold">房间</h2>
               <Row label="房间号" value={roomId || 'room_demo'} />
-              <Row label="名额" value={`${capacity} 人 · 已满`} />
-              <Row label="开始于" value="21:32" />
+              <Row
+                label="名额"
+                value={`${state.room?.occupiedSlots ?? state.members.length} / ${capacity}`}
+              />
               <p className="mt-4 border-t border-dashed border-rule pt-3 text-[11.5px] leading-relaxed text-muted">
                 关房后，聊天与成员资料不再保留。
               </p>

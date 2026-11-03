@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ProfileForm, type JoinValues } from '../features/join/ProfileForm'
 import { ApiError, getClientConfig } from '../shared/api/client'
+import { errorText } from '../shared/api/errors'
 import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
-import { Avatar } from '../shared/ui/Avatar'
 import { DEMO_INVITE_PATH } from '../state/demo'
 import { clearBootstrap, clearSession, loadBootstrap, loadSession, saveSession } from '../state/session'
 
@@ -16,24 +16,6 @@ const FALLBACK_POLICY: ValidationPolicy = {
   interestTags: { minItems: 1, maxItems: null },
 }
 
-const FACES = [
-  { id: 'member_host', initial: '林' },
-  { id: 'member_zhou', initial: '周' },
-  { id: 'member_lan', initial: '岚' },
-  { id: 'member_mi', initial: '米' },
-]
-
-const ERROR_TEXT: Record<string, string> = {
-  VALIDATION_ERROR: '资料没通过校验；如果都填好了，看看邀请码是否完整',
-  ROOM_FULL: '房间坐满了，等有人退出再来',
-  NICKNAME_TAKEN: '这个昵称已经有人用了，换一个吧',
-  INVITATION_INVALID: '邀请链接无效或已经失效',
-  ROOM_UNAVAILABLE: '房间不存在，或者已经关闭了',
-  MEMBER_REMOVED: '你被移出了这个房间，不能再加入',
-  BOOTSTRAP_CONFLICT: '这次入房的凭证已经用掉了，重新提交一次就好',
-  SERVICE_UNAVAILABLE: '服务暂时不可用，稍后再试',
-  NETWORK: '网络不太稳，稍后再试',
-}
 
 export default function JoinPage() {
   const { roomId = 'room_demo' } = useParams()
@@ -105,7 +87,7 @@ export default function JoinPage() {
             Object.fromEntries(caught.fieldErrors.map((item) => [item.path, item.message])),
           )
         }
-        setError(ERROR_TEXT[caught.code] ?? caught.message)
+        setError(errorText(caught.code, caught.message))
       } else {
         setError('没进去，稍后再试')
       }
@@ -151,25 +133,14 @@ export default function JoinPage() {
           <div className="mt-6 flex flex-wrap items-center gap-2.5 text-[13px] text-muted">
             <b className="font-semibold text-ink">{hostName} 的房间</b>
             <span>·</span>
-            <span>5 人上限</span>
+            <span>最多 5 人</span>
             <span>·</span>
-            <span>已到 4 人</span>
-          </div>
-
-          <div className="mt-4 flex">
-            {FACES.map((face, index) => (
-              <span key={face.id} className={index > 0 ? '-ml-3' : ''}>
-                <Avatar memberId={face.id} nickname={face.initial} size={46} />
-              </span>
-            ))}
-            <span className="-ml-3 grid h-[46px] w-[46px] place-items-center rounded-[52%_48%_45%_55%/48%_52%_48%_52%] border-[1.5px] border-dashed border-[rgba(139,115,85,.35)] bg-[rgba(255,253,247,.5)] text-[16px] text-muted">
-              +
-            </span>
+            <span>人满会提示坐不下</span>
           </div>
 
           <p className="mt-4 flex items-center gap-2 text-[12.5px] text-muted">
             <i className="block h-1.5 w-1.5 rounded-full bg-coral" />
-            还差 1 个人，人满就锁座
+            填完资料就能进去，同一浏览器会沿用这次身份
             {!linkBroken && <span className="text-faint">· 邀请码已识别</span>}
             {codeMissing && <span className="text-brick">· 这个地址没有邀请码</span>}
             {codeTruncated && <span className="text-brick">· 邀请码看起来不完整</span>}
