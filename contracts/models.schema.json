@@ -1,0 +1,1773 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TalkTogether v0.1 shared wire models",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "ClientRequestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "Secret": {
+      "type": "string",
+      "minLength": 32,
+      "description": "随机不透明凭证；示例值仅供 Mock，不是真实凭证。",
+      "pattern": "^[A-Za-z0-9_-]{32,}$"
+    },
+    "Time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "NonBlankText": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "ProfileInput": {
+      "type": "object",
+      "properties": {
+        "nickname": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "interestTags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NonBlankText"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "bio": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nickname",
+        "interestTags"
+      ],
+      "additionalProperties": false
+    },
+    "Profile": {
+      "type": "object",
+      "properties": {
+        "nickname": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "interestTags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NonBlankText"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "bio": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nickname",
+        "interestTags",
+        "bio"
+      ],
+      "additionalProperties": false
+    },
+    "ProfilePatch": {
+      "type": "object",
+      "properties": {
+        "nickname": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "interestTags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NonBlankText"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "bio": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "StringConstraint": {
+      "type": "object",
+      "properties": {
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "minLength",
+        "maxLength"
+      ],
+      "additionalProperties": false
+    },
+    "ValidationPolicy": {
+      "type": "object",
+      "properties": {
+        "nickname": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/StringConstraint"
+            },
+            {
+              "properties": {
+                "minLength": {
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        },
+        "interestTag": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/StringConstraint"
+            },
+            {
+              "properties": {
+                "minLength": {
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        },
+        "bio": {
+          "$ref": "#/$defs/StringConstraint"
+        },
+        "message": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/StringConstraint"
+            },
+            {
+              "properties": {
+                "minLength": {
+                  "minimum": 1
+                }
+              }
+            }
+          ]
+        },
+        "interestTags": {
+          "type": "object",
+          "properties": {
+            "minItems": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxItems": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "minItems",
+            "maxItems"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "nickname",
+        "interestTag",
+        "bio",
+        "message",
+        "interestTags"
+      ],
+      "additionalProperties": false
+    },
+    "ClientConfigData": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "const": "0.1.0"
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationPolicy"
+        }
+      },
+      "required": [
+        "contractVersion",
+        "validation"
+      ],
+      "additionalProperties": false
+    },
+    "Author": {
+      "type": "object",
+      "properties": {
+        "memberId": {
+          "$ref": "#/$defs/Id"
+        },
+        "nickname": {
+          "$ref": "#/$defs/NonBlankText"
+        }
+      },
+      "required": [
+        "memberId",
+        "nickname"
+      ],
+      "additionalProperties": false
+    },
+    "Membership": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "joinedSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "joinedAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "presence": {
+          "type": "string",
+          "enum": [
+            "connecting",
+            "online",
+            "offline"
+          ]
+        },
+        "recoveryExpiresAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "joinedSequence",
+        "joinedAt",
+        "presence",
+        "recoveryExpiresAt"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "online"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "recoveryExpiresAt": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "offline"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "recoveryExpiresAt": {
+                "$ref": "#/$defs/Time"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Member": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "host",
+            "member"
+          ]
+        },
+        "profile": {
+          "$ref": "#/$defs/Profile"
+        },
+        "membership": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Membership"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "profile",
+        "membership"
+      ],
+      "additionalProperties": false
+    },
+    "ActiveMember": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Member"
+        },
+        {
+          "properties": {
+            "membership": {
+              "$ref": "#/$defs/Membership"
+            }
+          }
+        }
+      ]
+    },
+    "Invitation": {
+      "type": "object",
+      "properties": {
+        "inviteCode": {
+          "$ref": "#/$defs/Secret"
+        },
+        "joinPath": {
+          "type": "string",
+          "pattern": "^/join/[^?]+\\?inviteCode=.+$"
+        }
+      },
+      "required": [
+        "inviteCode",
+        "joinPath"
+      ],
+      "additionalProperties": false
+    },
+    "Topic": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "title": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "content": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "common",
+            "popular"
+          ]
+        },
+        "sourceLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceUrl": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "publishedAt": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "content",
+        "kind",
+        "sourceLabel",
+        "sourceUrl",
+        "publishedAt"
+      ],
+      "additionalProperties": false
+    },
+    "Room": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "hostMemberId": {
+          "$ref": "#/$defs/Id"
+        },
+        "capacity": {
+          "const": 5
+        },
+        "occupiedSlots": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "host_reconnecting"
+          ]
+        },
+        "hostRecoveryExpiresAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currentTopic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Topic"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invitation": {
+          "$ref": "#/$defs/Invitation"
+        }
+      },
+      "required": [
+        "id",
+        "hostMemberId",
+        "capacity",
+        "occupiedSlots",
+        "status",
+        "hostRecoveryExpiresAt",
+        "currentTopic",
+        "invitation"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "host_reconnecting"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hostRecoveryExpiresAt": {
+                "$ref": "#/$defs/Time"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "hostRecoveryExpiresAt": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "VALIDATION_ERROR",
+        "MEMBER_CREDENTIAL_INVALID",
+        "MEMBERSHIP_INACTIVE",
+        "MEMBERSHIP_CHANGED",
+        "MEMBER_REMOVED",
+        "HOST_REQUIRED",
+        "HOST_PROTECTED",
+        "ROOM_UNAVAILABLE",
+        "MEMBER_NOT_FOUND",
+        "INVITATION_INVALID",
+        "ROOM_FULL",
+        "NICKNAME_TAKEN",
+        "IDEMPOTENCY_CONFLICT",
+        "IDEMPOTENCY_CONTEXT_EXPIRED",
+        "BOOTSTRAP_CONFLICT",
+        "MESSAGE_RATE_LIMITED",
+        "IP_RATE_LIMITED",
+        "AI_RATE_LIMITED",
+        "AI_QUEUE_FULL",
+        "AI_UNAVAILABLE",
+        "AI_QUEUE_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_PROVIDER_ERROR",
+        "AI_CANCELLED",
+        "CONNECTION_TICKET_INVALID",
+        "CONNECTION_TICKET_EXPIRED",
+        "CONNECTION_TICKET_USED",
+        "SERVICE_UNAVAILABLE",
+        "INTERNAL_ERROR"
+      ]
+    },
+    "FieldError": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "ErrorDetails": {
+      "type": "object",
+      "properties": {
+        "fieldErrors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FieldError"
+          }
+        },
+        "retryAfterMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fieldErrors",
+        "retryAfterMs"
+      ],
+      "additionalProperties": false
+    },
+    "Failure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryAfterMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryAfterMs"
+      ],
+      "additionalProperties": false
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "MemberMessage": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "const": "member"
+        },
+        "author": {
+          "$ref": "#/$defs/Author"
+        },
+        "text": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "clientRequestId": {
+          "$ref": "#/$defs/ClientRequestId"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "createdSequence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "author",
+        "text",
+        "clientRequestId",
+        "createdAt",
+        "createdSequence"
+      ],
+      "additionalProperties": false
+    },
+    "Invocation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "host",
+            "automatic"
+          ]
+        },
+        "caller": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Author"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "triggerMessageId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clientRequestId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClientRequestId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "queuePosition": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replyId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "createdSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Failure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "caller",
+        "triggerMessageId",
+        "clientRequestId",
+        "status",
+        "queuePosition",
+        "replyId",
+        "createdAt",
+        "createdSequence",
+        "startedAt",
+        "finishedAt",
+        "expiresAt",
+        "error"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "host"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "caller": {
+                "$ref": "#/$defs/Author"
+              },
+              "triggerMessageId": {
+                "$ref": "#/$defs/Id"
+              },
+              "clientRequestId": {
+                "$ref": "#/$defs/ClientRequestId"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "caller": {
+                "type": "null"
+              },
+              "triggerMessageId": {
+                "type": "null"
+              },
+              "clientRequestId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "$ref": "#/$defs/Failure"
+              },
+              "finishedAt": {
+                "$ref": "#/$defs/Time"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "queued"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "replyId": {
+                "type": "null"
+              },
+              "startedAt": {
+                "type": "null"
+              },
+              "finishedAt": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "running"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "replyId": {
+                "$ref": "#/$defs/Id"
+              },
+              "startedAt": {
+                "$ref": "#/$defs/Time"
+              },
+              "finishedAt": {
+                "type": "null"
+              },
+              "queuePosition": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "replyId": {
+                "$ref": "#/$defs/Id"
+              },
+              "startedAt": {
+                "$ref": "#/$defs/Time"
+              },
+              "finishedAt": {
+                "$ref": "#/$defs/Time"
+              },
+              "queuePosition": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "completed",
+                  "failed",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "finishedAt": {
+                "$ref": "#/$defs/Time"
+              },
+              "queuePosition": {
+                "type": "null"
+              },
+              "expiresAt": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "replyId": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "startedAt": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "startedAt": {
+                "$ref": "#/$defs/Time"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AIReply": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "kind": {
+          "const": "ai"
+        },
+        "invocationId": {
+          "$ref": "#/$defs/Id"
+        },
+        "caller": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Author"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "triggerMessageId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "reply",
+            "topic",
+            "invitation"
+          ]
+        },
+        "invitedMember": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Author"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "streaming",
+            "completed",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "startedSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "createdAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Failure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "invocationId",
+        "caller",
+        "triggerMessageId",
+        "purpose",
+        "invitedMember",
+        "text",
+        "status",
+        "startedSequence",
+        "createdAt",
+        "updatedAt",
+        "error"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purpose": {
+                "const": "invitation"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "invitedMember": {
+                "$ref": "#/$defs/Author"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "invitedMember": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "failed",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "$ref": "#/$defs/Failure"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "error": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "$ref": "#/$defs/NonBlankText"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Message": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/MemberMessage"
+        },
+        {
+          "$ref": "#/$defs/AIReply"
+        }
+      ]
+    },
+    "SnapshotData": {
+      "type": "object",
+      "properties": {
+        "self": {
+          "type": "object",
+          "properties": {
+            "memberId": {
+              "$ref": "#/$defs/Id"
+            },
+            "membershipId": {
+              "$ref": "#/$defs/Id"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "host",
+                "member"
+              ]
+            },
+            "joinedSequence": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "memberId",
+            "membershipId",
+            "role",
+            "joinedSequence"
+          ],
+          "additionalProperties": false
+        },
+        "room": {
+          "$ref": "#/$defs/Room"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActiveMember"
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "messages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Message"
+          }
+        },
+        "invocations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Invocation"
+          }
+        }
+      },
+      "required": [
+        "self",
+        "room",
+        "members",
+        "messages",
+        "invocations"
+      ],
+      "additionalProperties": false
+    },
+    "CreateRoomRequest": {
+      "type": "object",
+      "properties": {
+        "clientRequestId": {
+          "$ref": "#/$defs/ClientRequestId"
+        },
+        "bootstrapToken": {
+          "$ref": "#/$defs/Secret"
+        },
+        "profile": {
+          "$ref": "#/$defs/ProfileInput"
+        }
+      },
+      "required": [
+        "clientRequestId",
+        "bootstrapToken",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "JoinRoomRequest": {
+      "type": "object",
+      "properties": {
+        "clientRequestId": {
+          "$ref": "#/$defs/ClientRequestId"
+        },
+        "bootstrapToken": {
+          "$ref": "#/$defs/Secret"
+        },
+        "inviteCode": {
+          "$ref": "#/$defs/Secret"
+        },
+        "profile": {
+          "$ref": "#/$defs/ProfileInput"
+        }
+      },
+      "required": [
+        "clientRequestId",
+        "inviteCode",
+        "profile"
+      ],
+      "additionalProperties": false
+    },
+    "SendMessageRequest": {
+      "type": "object",
+      "properties": {
+        "clientRequestId": {
+          "$ref": "#/$defs/ClientRequestId"
+        },
+        "text": {
+          "$ref": "#/$defs/NonBlankText"
+        },
+        "mentions": {
+          "type": "array",
+          "items": {
+            "const": "ai"
+          },
+          "maxItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "clientRequestId",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "AiReceipt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "not_requested",
+                "ignored"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running"
+              ]
+            },
+            "invocationId": {
+              "$ref": "#/$defs/Id"
+            }
+          },
+          "required": [
+            "status",
+            "invocationId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "rejected"
+            },
+            "error": {
+              "$ref": "#/$defs/Failure"
+            }
+          },
+          "required": [
+            "status",
+            "error"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RoomEntryData": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "$ref": "#/$defs/Room"
+        },
+        "member": {
+          "$ref": "#/$defs/ActiveMember"
+        },
+        "memberCredential": {
+          "$ref": "#/$defs/Secret"
+        }
+      },
+      "required": [
+        "room",
+        "member",
+        "memberCredential"
+      ],
+      "additionalProperties": false
+    },
+    "SelfData": {
+      "type": "object",
+      "properties": {
+        "member": {
+          "$ref": "#/$defs/Member"
+        }
+      },
+      "required": [
+        "member"
+      ],
+      "additionalProperties": false
+    },
+    "UpdateProfileData": {
+      "type": "object",
+      "properties": {
+        "member": {
+          "$ref": "#/$defs/ActiveMember"
+        }
+      },
+      "required": [
+        "member"
+      ],
+      "additionalProperties": false
+    },
+    "LeaveData": {
+      "type": "object",
+      "properties": {
+        "memberId": {
+          "$ref": "#/$defs/Id"
+        },
+        "membershipId": {
+          "$ref": "#/$defs/Id"
+        },
+        "roomClosed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "memberId",
+        "membershipId",
+        "roomClosed"
+      ],
+      "additionalProperties": false
+    },
+    "RemoveData": {
+      "type": "object",
+      "properties": {
+        "memberId": {
+          "$ref": "#/$defs/Id"
+        },
+        "membershipId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "removed": {
+          "const": true
+        }
+      },
+      "required": [
+        "memberId",
+        "membershipId",
+        "removed"
+      ],
+      "additionalProperties": false
+    },
+    "ClosedData": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "$ref": "#/$defs/Id"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "host_left",
+            "host_closed",
+            "host_timeout"
+          ]
+        },
+        "closedAt": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "roomId",
+        "reason",
+        "closedAt"
+      ],
+      "additionalProperties": false
+    },
+    "SendMessageData": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "$ref": "#/$defs/MemberMessage"
+        },
+        "ai": {
+          "$ref": "#/$defs/AiReceipt"
+        }
+      },
+      "required": [
+        "message",
+        "ai"
+      ],
+      "additionalProperties": false
+    },
+    "ConnectionTicketData": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "$ref": "#/$defs/Id"
+        },
+        "memberId": {
+          "$ref": "#/$defs/Id"
+        },
+        "membershipId": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket": {
+          "$ref": "#/$defs/Secret"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/Time"
+        },
+        "webSocketUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^wss?://"
+        }
+      },
+      "required": [
+        "roomId",
+        "memberId",
+        "membershipId",
+        "ticket",
+        "expiresAt",
+        "webSocketUrl"
+      ],
+      "additionalProperties": false
+    },
+    "ClientConfigResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ClientConfigData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "RoomEntryResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/RoomEntryData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "SelfResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/SelfData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "UpdateProfileResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/UpdateProfileData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "LeaveResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/LeaveData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "RemoveResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/RemoveData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "ClosedResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ClosedData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "SendMessageResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/SendMessageData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    },
+    "ConnectionTicketResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "OK"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/ConnectionTicketData"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data",
+        "requestId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

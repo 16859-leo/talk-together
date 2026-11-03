@@ -1,0 +1,3434 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "TalkTogether frontend/backend contract",
+    "version": "0.1.0",
+    "description": "前后端并行开发接口基线。运行阈值由后端配置，不采用未确认的 Q33–Q38 建议默认值。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4010",
+      "description": "本地 HTTP Mock；不是部署地址约定。"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Rooms"
+    },
+    {
+      "name": "Config"
+    }
+  ],
+  "paths": {
+    "/api/v1/client-config": {
+      "get": {
+        "operationId": "getClientConfig",
+        "summary": "取得客户端校验策略",
+        "description": "maxLength/maxItems 为 null 表示没有对客户端声明固定上限；不得从示例推断产品默认值。",
+        "tags": [
+          "Config"
+        ],
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientConfigResponse"
+                },
+                "examples": {
+                  "client_config": {
+                    "$ref": "./examples/http.json#/client_config/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms": {
+      "post": {
+        "operationId": "createRoom",
+        "summary": "创建房间与房主身份",
+        "description": "先在浏览器保存随机 bootstrapToken 和 clientRequestId，再提交。相同引导凭证与相同请求重试返回原房间和身份；相同凭证不得用于不同创建意图。资料 bio 缺省为字符串空值。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "201": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomEntryResponse"
+                },
+                "examples": {
+                  "create_room": {
+                    "$ref": "./examples/http.json#/create_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VALIDATION_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_profile": {
+                    "$ref": "./examples/http.json#/bad_profile/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "BOOTSTRAP_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bootstrap_conflict": {
+                    "$ref": "./examples/http.json#/bootstrap_conflict/response"
+                  },
+                  "duplicate_conflict": {
+                    "$ref": "./examples/http.json#/duplicate_conflict/response"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "description": "等待秒数；取 retryAfterMs 的向上取整。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "IP_RATE_LIMITED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "ip_limited": {
+                    "$ref": "./examples/http.json#/ip_limited/response"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "SERVICE_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "$ref": "./examples/http.json#/service_unavailable/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoomRequest"
+              },
+              "examples": {
+                "create_room": {
+                  "value": {
+                    "clientRequestId": "cdc1d893-51d6-5465-8b70-f3931d95c0ee",
+                    "bootstrapToken": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "profile": {
+                      "nickname": "小林",
+                      "interestTags": [
+                        "阅读",
+                        "电影"
+                      ],
+                      "bio": ""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDATION_ERROR"
+          ],
+          "409": [
+            "BOOTSTRAP_CONFLICT",
+            "IDEMPOTENCY_CONFLICT"
+          ],
+          "429": [
+            "IP_RATE_LIMITED"
+          ],
+          "503": [
+            "SERVICE_UNAVAILABLE"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/members": {
+      "post": {
+        "operationId": "joinRoom",
+        "summary": "首次加入、恢复已有入房或重新加入",
+        "description": "无 Bearer 时必须提供 bootstrapToken，重试同一初次加入不能创建第二个身份。有 Bearer 时复用原身份，不使用 bootstrapToken。已在房间则返回 200，复用原 membership 和资料，不重复占位或重置消息范围；更新资料使用 PATCH。超时或主动退出后重新加入返回 201 和新 membership。昵称等细则由服务端校验，通过明确错误返回。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          }
+        ],
+        "security": [
+          {},
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomEntryResponse"
+                },
+                "examples": {
+                  "join_room": {
+                    "$ref": "./examples/http.json#/join_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomEntryResponse"
+                },
+                "examples": {
+                  "join_reuse": {
+                    "$ref": "./examples/http.json#/join_reuse/response"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VALIDATION_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_profile": {
+                    "$ref": "./examples/http.json#/bad_profile/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE",
+                            "INVITATION_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  },
+                  "wrong_invite": {
+                    "$ref": "./examples/http.json#/wrong_invite/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_FULL",
+                            "NICKNAME_TAKEN",
+                            "IDEMPOTENCY_CONFLICT",
+                            "IDEMPOTENCY_CONTEXT_EXPIRED",
+                            "BOOTSTRAP_CONFLICT"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "full_room": {
+                    "$ref": "./examples/http.json#/full_room/response"
+                  },
+                  "nickname_taken": {
+                    "$ref": "./examples/http.json#/nickname_taken/response"
+                  },
+                  "duplicate_conflict": {
+                    "$ref": "./examples/http.json#/duplicate_conflict/response"
+                  },
+                  "duplicate_context": {
+                    "$ref": "./examples/http.json#/duplicate_context/response"
+                  },
+                  "bootstrap_conflict": {
+                    "$ref": "./examples/http.json#/bootstrap_conflict/response"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "description": "等待秒数；取 retryAfterMs 的向上取整。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "IP_RATE_LIMITED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "ip_limited": {
+                    "$ref": "./examples/http.json#/ip_limited/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRoomRequest"
+              },
+              "examples": {
+                "join_room": {
+                  "value": {
+                    "clientRequestId": "d870d1fa-73bf-5a2a-a5c0-8429f5cdbbee",
+                    "bootstrapToken": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "profile": {
+                      "nickname": "小周",
+                      "interestTags": [
+                        "旅行"
+                      ],
+                      "bio": ""
+                    }
+                  }
+                },
+                "join_reuse": {
+                  "value": {
+                    "clientRequestId": "746707f7-2bf4-502d-9fd4-7830e285fedc",
+                    "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "profile": {
+                      "nickname": "小周",
+                      "interestTags": [
+                        "旅行"
+                      ],
+                      "bio": ""
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDATION_ERROR"
+          ],
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE",
+            "INVITATION_INVALID"
+          ],
+          "409": [
+            "ROOM_FULL",
+            "NICKNAME_TAKEN",
+            "IDEMPOTENCY_CONFLICT",
+            "IDEMPOTENCY_CONTEXT_EXPIRED",
+            "BOOTSTRAP_CONFLICT"
+          ],
+          "429": [
+            "IP_RATE_LIMITED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/members/me": {
+      "get": {
+        "operationId": "getSelf",
+        "summary": "恢复本房间身份与当前入房状态",
+        "description": "有效身份已退出时 membership 为 null，不自动重新加入；重新加入须由用户明确操作。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfResponse"
+                },
+                "examples": {
+                  "self_active": {
+                    "$ref": "./examples/http.json#/self_active/response"
+                  },
+                  "self_left": {
+                    "$ref": "./examples/http.json#/self_left/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "patch": {
+        "operationId": "updateSelf",
+        "summary": "修改本人公开资料",
+        "description": "缺省字段保留原值，bio 空字符串表示清空。至少修改一个字段，不接收 null。公共状态以 WS member.updated 为准。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProfileResponse"
+                },
+                "examples": {
+                  "profile_updated": {
+                    "$ref": "./examples/http.json#/profile_updated/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED",
+                            "NICKNAME_TAKEN"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  },
+                  "nickname_taken": {
+                    "$ref": "./examples/http.json#/nickname_taken/response"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VALIDATION_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_patch": {
+                    "$ref": "./examples/http.json#/bad_patch/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePatch"
+              },
+              "examples": {
+                "profile_updated": {
+                  "value": {
+                    "bio": "最近在读科幻小说"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED",
+            "NICKNAME_TAKEN"
+          ],
+          "400": [
+            "VALIDATION_ERROR"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      },
+      "delete": {
+        "operationId": "leaveRoom",
+        "summary": "本人主动退出，房主退出同时关房",
+        "description": "按 X-Membership-Id 结束本次入房，所有标签页同步离房；迟到的旧入房响应不能使新入房退出。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaveResponse"
+                },
+                "examples": {
+                  "leave_member": {
+                    "$ref": "./examples/http.json#/leave_member/response"
+                  },
+                  "leave_host": {
+                    "$ref": "./examples/http.json#/leave_host/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/members/{memberId}": {
+      "delete": {
+        "operationId": "removeMember",
+        "summary": "房主移出成员并阻止原身份重入",
+        "description": "仅房主可执行，不允许移出房主；限制针对临时身份，不封禁同 IP 的其他成员。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MemberId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveResponse"
+                },
+                "examples": {
+                  "remove_member": {
+                    "$ref": "./examples/http.json#/remove_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE",
+                            "HOST_REQUIRED",
+                            "HOST_PROTECTED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  },
+                  "wrong_host": {
+                    "$ref": "./examples/http.json#/wrong_host/response"
+                  },
+                  "host_protected": {
+                    "$ref": "./examples/http.json#/host_protected/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE",
+                            "MEMBER_NOT_FOUND"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  },
+                  "missing_member": {
+                    "$ref": "./examples/http.json#/missing_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE",
+            "HOST_REQUIRED",
+            "HOST_PROTECTED"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE",
+            "MEMBER_NOT_FOUND"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}": {
+      "delete": {
+        "operationId": "closeRoom",
+        "summary": "房主关闭房间",
+        "description": "终止剩余 AI 调用，发送最终 room.closed 后清理房间聊天和公开资料。关闭后其他请求统一返回 ROOM_UNAVAILABLE。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosedResponse"
+                },
+                "examples": {
+                  "close_room": {
+                    "$ref": "./examples/http.json#/close_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE",
+                            "HOST_REQUIRED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  },
+                  "wrong_host": {
+                    "$ref": "./examples/http.json#/wrong_host/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE",
+            "HOST_REQUIRED"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/messages": {
+      "post": {
+        "operationId": "sendMessage",
+        "summary": "提交聊天及可选 AI 提及",
+        "description": "成员消息成功创建即返回 201；AI 未受理放在 data.ai，不回滚聊天。普通成员提及为 ignored。仅文字包含 @AI 不触发，必须提供 mentions:[ai]。clientRequestId 在同成员和同次入房内幂等；原入房的结果不能通过重试泄漏给新入房，返回 IDEMPOTENCY_CONTEXT_EXPIRED。HTTP 响应是接收回执，不是当前 AI 运行状态。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "成功接收；是否异步生成以 ai 接收结果和 WS 事件为准。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendMessageResponse"
+                },
+                "examples": {
+                  "message_queued": {
+                    "$ref": "./examples/http.json#/message_queued/response"
+                  },
+                  "message_running": {
+                    "$ref": "./examples/http.json#/message_running/response"
+                  },
+                  "message_plain": {
+                    "$ref": "./examples/http.json#/message_plain/response"
+                  },
+                  "message_ignored": {
+                    "$ref": "./examples/http.json#/message_ignored/response"
+                  },
+                  "message_ai_limited": {
+                    "$ref": "./examples/http.json#/message_ai_limited/response"
+                  },
+                  "message_queue_full": {
+                    "$ref": "./examples/http.json#/message_queue_full/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED",
+                            "IDEMPOTENCY_CONFLICT",
+                            "IDEMPOTENCY_CONTEXT_EXPIRED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  },
+                  "duplicate_conflict": {
+                    "$ref": "./examples/http.json#/duplicate_conflict/response"
+                  },
+                  "duplicate_context": {
+                    "$ref": "./examples/http.json#/duplicate_context/response"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VALIDATION_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_message": {
+                    "$ref": "./examples/http.json#/bad_message/response"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "description": "等待秒数；取 retryAfterMs 的向上取整。"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MESSAGE_RATE_LIMITED",
+                            "IP_RATE_LIMITED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "message_limited": {
+                    "$ref": "./examples/http.json#/message_limited/response"
+                  },
+                  "ip_limited": {
+                    "$ref": "./examples/http.json#/ip_limited/response"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "SERVICE_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "service_unavailable": {
+                    "$ref": "./examples/http.json#/service_unavailable/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              },
+              "examples": {
+                "message_queued": {
+                  "value": {
+                    "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+                    "text": "@AI 帮我们找一个共同话题",
+                    "mentions": [
+                      "ai"
+                    ]
+                  }
+                },
+                "message_running": {
+                  "value": {
+                    "clientRequestId": "94539559-1972-5324-b3dd-418cbae02f89",
+                    "text": "@AI 帮我们找一个共同话题",
+                    "mentions": [
+                      "ai"
+                    ]
+                  }
+                },
+                "message_plain": {
+                  "value": {
+                    "clientRequestId": "d5b1f7d8-c153-56d3-980d-ce7b3489ec43",
+                    "text": "大家最近看了什么电影？",
+                    "mentions": []
+                  }
+                },
+                "message_ignored": {
+                  "value": {
+                    "clientRequestId": "b9513a35-ce13-5893-a7f2-5bf2fa4f65aa",
+                    "text": "@AI 帮我们找一个共同话题",
+                    "mentions": [
+                      "ai"
+                    ]
+                  }
+                },
+                "message_ai_limited": {
+                  "value": {
+                    "clientRequestId": "91fc16e6-4fa0-50cf-bbca-5ae7e7494ae3",
+                    "text": "@AI 帮我们找一个共同话题",
+                    "mentions": [
+                      "ai"
+                    ]
+                  }
+                },
+                "message_queue_full": {
+                  "value": {
+                    "clientRequestId": "00eb8c01-a988-5078-8402-1c6c9e221c77",
+                    "text": "@AI 帮我们找一个共同话题",
+                    "mentions": [
+                      "ai"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED",
+            "IDEMPOTENCY_CONFLICT",
+            "IDEMPOTENCY_CONTEXT_EXPIRED"
+          ],
+          "400": [
+            "VALIDATION_ERROR"
+          ],
+          "429": [
+            "MESSAGE_RATE_LIMITED",
+            "IP_RATE_LIMITED"
+          ],
+          "503": [
+            "SERVICE_UNAVAILABLE"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/connection-tickets": {
+      "post": {
+        "operationId": "createConnectionTicket",
+        "summary": "为一个 WS 连接签发一次性票据",
+        "description": "每个标签页和每次重连分别取票。票据绑定 room/member/membership，使用一次后失效，期限以 expiresAt 为准。客户端使用服务端 webSocketUrl，不自行拼接或把长期成员凭证放进 URL。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/MembershipId"
+          }
+        ],
+        "security": [
+          {
+            "memberBearer": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "操作成功。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTicketResponse"
+                },
+                "examples": {
+                  "connection_ticket": {
+                    "$ref": "./examples/http.json#/connection_ticket/response"
+                  },
+                  "connection_ticket_guest": {
+                    "$ref": "./examples/http.json#/connection_ticket_guest/response"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_CREDENTIAL_INVALID"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "bad_member": {
+                    "$ref": "./examples/http.json#/bad_member/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "MEMBER_CREDENTIAL_INVALID"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/events": {
+      "get": {
+        "operationId": "connectRoomEvents",
+        "summary": "升级为房间 WebSocket",
+        "description": "这是 WS 升级端点，不是 HTTP 历史查询。用票据校验后首个业务消息为 room.snapshot；之后按 sequence 推送。浏览器 WS 错误后通过 REST 取新票据或 getSelf 确认资格，不依赖读取升级失败的 HTTP 正文。完整服务端消息见 events.schema.json。",
+        "tags": [
+          "Rooms"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomId"
+          },
+          {
+            "$ref": "#/components/parameters/ConnectionTicket"
+          }
+        ],
+        "security": [
+          {
+            "connectionTicket": []
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "CONNECTION_TICKET_INVALID",
+                            "CONNECTION_TICKET_EXPIRED",
+                            "CONNECTION_TICKET_USED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "ticket_invalid": {
+                    "$ref": "./examples/http.json#/ticket_invalid/response"
+                  },
+                  "ticket_expired": {
+                    "$ref": "./examples/http.json#/ticket_expired/response"
+                  },
+                  "ticket_used": {
+                    "$ref": "./examples/http.json#/ticket_used/response"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBER_REMOVED",
+                            "MEMBERSHIP_INACTIVE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "kicked": {
+                    "$ref": "./examples/http.json#/kicked/response"
+                  },
+                  "inactive": {
+                    "$ref": "./examples/http.json#/inactive/response"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "ROOM_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "missing_room": {
+                    "$ref": "./examples/http.json#/missing_room/response"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MEMBERSHIP_CHANGED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "membership_changed": {
+                    "$ref": "./examples/http.json#/membership_changed/response"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "请求未完成，按业务 code 处理。",
+            "headers": {
+              "X-Contract-Version": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "0.1.0"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INTERNAL_ERROR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "internal_error": {
+                    "$ref": "./examples/http.json#/internal_error/response"
+                  }
+                }
+              }
+            }
+          },
+          "101": {
+            "description": "升级成功；首帧快照，后续事件遵循 events.schema.json。"
+          }
+        },
+        "x-error-codes": {
+          "401": [
+            "CONNECTION_TICKET_INVALID",
+            "CONNECTION_TICKET_EXPIRED",
+            "CONNECTION_TICKET_USED"
+          ],
+          "403": [
+            "MEMBER_REMOVED",
+            "MEMBERSHIP_INACTIVE"
+          ],
+          "404": [
+            "ROOM_UNAVAILABLE"
+          ],
+          "409": [
+            "MEMBERSHIP_CHANGED"
+          ],
+          "500": [
+            "INTERNAL_ERROR"
+          ]
+        },
+        "x-websocket-message-schema": {
+          "$ref": "./events.schema.json"
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Id": {
+        "$ref": "./models.schema.json#/$defs/Id"
+      },
+      "ClientRequestId": {
+        "$ref": "./models.schema.json#/$defs/ClientRequestId"
+      },
+      "Secret": {
+        "$ref": "./models.schema.json#/$defs/Secret"
+      },
+      "Time": {
+        "$ref": "./models.schema.json#/$defs/Time"
+      },
+      "NonBlankText": {
+        "$ref": "./models.schema.json#/$defs/NonBlankText"
+      },
+      "ProfileInput": {
+        "$ref": "./models.schema.json#/$defs/ProfileInput"
+      },
+      "Profile": {
+        "$ref": "./models.schema.json#/$defs/Profile"
+      },
+      "ProfilePatch": {
+        "$ref": "./models.schema.json#/$defs/ProfilePatch"
+      },
+      "StringConstraint": {
+        "$ref": "./models.schema.json#/$defs/StringConstraint"
+      },
+      "ValidationPolicy": {
+        "$ref": "./models.schema.json#/$defs/ValidationPolicy"
+      },
+      "ClientConfigData": {
+        "$ref": "./models.schema.json#/$defs/ClientConfigData"
+      },
+      "Author": {
+        "$ref": "./models.schema.json#/$defs/Author"
+      },
+      "Membership": {
+        "$ref": "./models.schema.json#/$defs/Membership"
+      },
+      "Member": {
+        "$ref": "./models.schema.json#/$defs/Member"
+      },
+      "ActiveMember": {
+        "$ref": "./models.schema.json#/$defs/ActiveMember"
+      },
+      "Invitation": {
+        "$ref": "./models.schema.json#/$defs/Invitation"
+      },
+      "Topic": {
+        "$ref": "./models.schema.json#/$defs/Topic"
+      },
+      "Room": {
+        "$ref": "./models.schema.json#/$defs/Room"
+      },
+      "ErrorCode": {
+        "$ref": "./models.schema.json#/$defs/ErrorCode"
+      },
+      "FieldError": {
+        "$ref": "./models.schema.json#/$defs/FieldError"
+      },
+      "ErrorDetails": {
+        "$ref": "./models.schema.json#/$defs/ErrorDetails"
+      },
+      "Failure": {
+        "$ref": "./models.schema.json#/$defs/Failure"
+      },
+      "ErrorResponse": {
+        "$ref": "./models.schema.json#/$defs/ErrorResponse"
+      },
+      "MemberMessage": {
+        "$ref": "./models.schema.json#/$defs/MemberMessage"
+      },
+      "Invocation": {
+        "$ref": "./models.schema.json#/$defs/Invocation"
+      },
+      "AIReply": {
+        "$ref": "./models.schema.json#/$defs/AIReply"
+      },
+      "Message": {
+        "$ref": "./models.schema.json#/$defs/Message"
+      },
+      "SnapshotData": {
+        "$ref": "./models.schema.json#/$defs/SnapshotData"
+      },
+      "CreateRoomRequest": {
+        "$ref": "./models.schema.json#/$defs/CreateRoomRequest"
+      },
+      "JoinRoomRequest": {
+        "$ref": "./models.schema.json#/$defs/JoinRoomRequest"
+      },
+      "SendMessageRequest": {
+        "$ref": "./models.schema.json#/$defs/SendMessageRequest"
+      },
+      "AiReceipt": {
+        "$ref": "./models.schema.json#/$defs/AiReceipt"
+      },
+      "RoomEntryData": {
+        "$ref": "./models.schema.json#/$defs/RoomEntryData"
+      },
+      "SelfData": {
+        "$ref": "./models.schema.json#/$defs/SelfData"
+      },
+      "UpdateProfileData": {
+        "$ref": "./models.schema.json#/$defs/UpdateProfileData"
+      },
+      "LeaveData": {
+        "$ref": "./models.schema.json#/$defs/LeaveData"
+      },
+      "RemoveData": {
+        "$ref": "./models.schema.json#/$defs/RemoveData"
+      },
+      "ClosedData": {
+        "$ref": "./models.schema.json#/$defs/ClosedData"
+      },
+      "SendMessageData": {
+        "$ref": "./models.schema.json#/$defs/SendMessageData"
+      },
+      "ConnectionTicketData": {
+        "$ref": "./models.schema.json#/$defs/ConnectionTicketData"
+      },
+      "ClientConfigResponse": {
+        "$ref": "./models.schema.json#/$defs/ClientConfigResponse"
+      },
+      "RoomEntryResponse": {
+        "$ref": "./models.schema.json#/$defs/RoomEntryResponse"
+      },
+      "SelfResponse": {
+        "$ref": "./models.schema.json#/$defs/SelfResponse"
+      },
+      "UpdateProfileResponse": {
+        "$ref": "./models.schema.json#/$defs/UpdateProfileResponse"
+      },
+      "LeaveResponse": {
+        "$ref": "./models.schema.json#/$defs/LeaveResponse"
+      },
+      "RemoveResponse": {
+        "$ref": "./models.schema.json#/$defs/RemoveResponse"
+      },
+      "ClosedResponse": {
+        "$ref": "./models.schema.json#/$defs/ClosedResponse"
+      },
+      "SendMessageResponse": {
+        "$ref": "./models.schema.json#/$defs/SendMessageResponse"
+      },
+      "ConnectionTicketResponse": {
+        "$ref": "./models.schema.json#/$defs/ConnectionTicketResponse"
+      },
+      "ServerMessage": {
+        "$ref": "./events.schema.json"
+      }
+    },
+    "parameters": {
+      "RoomId": {
+        "name": "roomId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Id"
+        }
+      },
+      "MemberId": {
+        "name": "memberId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Id"
+        }
+      },
+      "MembershipId": {
+        "name": "X-Membership-Id",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Id"
+        },
+        "description": "当前入房记录 ID，来自创建、加入或 getSelf。用于拒绝旧标签页对新一轮入房的误操作。"
+      },
+      "ConnectionTicket": {
+        "name": "ticket",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Secret"
+        }
+      }
+    },
+    "securitySchemes": {
+      "memberBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque room credential"
+      },
+      "connectionTicket": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "ticket"
+      }
+    }
+  }
+}

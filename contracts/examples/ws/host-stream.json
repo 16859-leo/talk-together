@@ -1,0 +1,297 @@
+{
+  "description": "房主从受理到流式完成，事件和 HTTP 可任意先后到达。",
+  "baseTime": "2026-11-03T09:00:00.000Z",
+  "viewer": {
+    "memberId": "member_host",
+    "membershipId": "membership_host",
+    "role": "host",
+    "joinedSequence": 1
+  },
+  "httpExamples": [
+    "message_queued",
+    "connection_ticket"
+  ],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 2,
+        "capturedAt": "2026-11-03T09:00:00.000Z",
+        "data": {
+          "self": {
+            "memberId": "member_host",
+            "membershipId": "membership_host",
+            "role": "host",
+            "joinedSequence": 1
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            },
+            {
+              "id": "member_guest",
+              "role": "member",
+              "profile": {
+                "nickname": "小周",
+                "interestTags": [
+                  "旅行"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_guest",
+                "joinedSequence": 2,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [],
+          "invocations": []
+        }
+      }
+    },
+    {
+      "atMs": 100,
+      "message": {
+        "type": "message.created",
+        "eventId": "event_3",
+        "roomId": "room_demo",
+        "sequence": 3,
+        "occurredAt": "2026-11-03T09:00:00.100Z",
+        "data": {
+          "message": {
+            "id": "message_message_queued",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          }
+        }
+      }
+    },
+    {
+      "atMs": 200,
+      "message": {
+        "type": "ai.invocation.updated",
+        "eventId": "event_4",
+        "roomId": "room_demo",
+        "sequence": 4,
+        "occurredAt": "2026-11-03T09:00:00.200Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_message_queued",
+            "source": "host",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "status": "queued",
+            "queuePosition": 1,
+            "replyId": null,
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 4,
+            "startedAt": null,
+            "finishedAt": null,
+            "expiresAt": null,
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 300,
+      "message": {
+        "type": "ai.reply.started",
+        "eventId": "event_5",
+        "roomId": "room_demo",
+        "sequence": 5,
+        "occurredAt": "2026-11-03T09:00:00.300Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_message_queued",
+            "source": "host",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "status": "running",
+            "queuePosition": null,
+            "replyId": "reply_message_queued",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 4,
+            "startedAt": "2026-11-03T09:00:00.300Z",
+            "finishedAt": null,
+            "expiresAt": null,
+            "error": null
+          },
+          "reply": {
+            "id": "reply_message_queued",
+            "kind": "ai",
+            "invocationId": "invocation_message_queued",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "purpose": "topic",
+            "invitedMember": null,
+            "text": "",
+            "status": "streaming",
+            "startedSequence": 5,
+            "createdAt": "2026-11-03T09:00:00.300Z",
+            "updatedAt": "2026-11-03T09:00:00.300Z",
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 400,
+      "message": {
+        "type": "ai.reply.delta",
+        "eventId": "event_6",
+        "roomId": "room_demo",
+        "sequence": 6,
+        "occurredAt": "2026-11-03T09:00:00.400Z",
+        "data": {
+          "invocationId": "invocation_message_queued",
+          "replyId": "reply_message_queued",
+          "textDelta": "最近大家"
+        }
+      }
+    },
+    {
+      "atMs": 500,
+      "message": {
+        "type": "ai.reply.delta",
+        "eventId": "event_7",
+        "roomId": "room_demo",
+        "sequence": 7,
+        "occurredAt": "2026-11-03T09:00:00.500Z",
+        "data": {
+          "invocationId": "invocation_message_queued",
+          "replyId": "reply_message_queued",
+          "textDelta": "看过什么好电影？"
+        }
+      }
+    },
+    {
+      "atMs": 600,
+      "message": {
+        "type": "ai.reply.completed",
+        "eventId": "event_8",
+        "roomId": "room_demo",
+        "sequence": 8,
+        "occurredAt": "2026-11-03T09:00:00.600Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_message_queued",
+            "source": "host",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "status": "completed",
+            "queuePosition": null,
+            "replyId": "reply_message_queued",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 4,
+            "startedAt": "2026-11-03T09:00:00.300Z",
+            "finishedAt": "2026-11-03T09:00:00.600Z",
+            "expiresAt": null,
+            "error": null
+          },
+          "reply": {
+            "id": "reply_message_queued",
+            "kind": "ai",
+            "invocationId": "invocation_message_queued",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "purpose": "topic",
+            "invitedMember": null,
+            "text": "最近大家看过什么好电影？",
+            "status": "completed",
+            "startedSequence": 5,
+            "createdAt": "2026-11-03T09:00:00.300Z",
+            "updatedAt": "2026-11-03T09:00:00.600Z",
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 700,
+      "message": {
+        "type": "topic.changed",
+        "eventId": "event_9",
+        "roomId": "room_demo",
+        "sequence": 9,
+        "occurredAt": "2026-11-03T09:00:00.700Z",
+        "data": {
+          "topic": {
+            "id": "topic_movie",
+            "title": "最近看的电影",
+            "content": "最近大家看过什么好电影？",
+            "kind": "common",
+            "sourceLabel": "备用精选",
+            "sourceUrl": null,
+            "publishedAt": "2026-11-03T09:00:00.700Z"
+          }
+        }
+      }
+    }
+  ],
+  "expectedReplies": {
+    "reply_message_queued": {
+      "status": "completed",
+      "text": "最近大家看过什么好电影？"
+    }
+  }
+}

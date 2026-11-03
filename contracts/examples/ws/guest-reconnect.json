@@ -1,0 +1,228 @@
+{
+  "description": "原成员重连从快照累计文本继续，不重放原先的片段。",
+  "baseTime": "2026-11-03T09:00:00.400Z",
+  "viewer": {
+    "memberId": "member_guest",
+    "membershipId": "membership_guest",
+    "role": "member",
+    "joinedSequence": 2
+  },
+  "httpExamples": [
+    "connection_ticket_guest"
+  ],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 6,
+        "capturedAt": "2026-11-03T09:00:00.400Z",
+        "data": {
+          "self": {
+            "memberId": "member_guest",
+            "membershipId": "membership_guest",
+            "role": "member",
+            "joinedSequence": 2
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            },
+            {
+              "id": "member_guest",
+              "role": "member",
+              "profile": {
+                "nickname": "小周",
+                "interestTags": [
+                  "旅行"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_guest",
+                "joinedSequence": 2,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [
+            {
+              "id": "message_message_queued",
+              "kind": "member",
+              "author": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "text": "@AI 帮我们找一个共同话题",
+              "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+              "createdAt": "2026-11-03T09:00:00.000Z",
+              "createdSequence": 3
+            },
+            {
+              "id": "reply_message_queued",
+              "kind": "ai",
+              "invocationId": "invocation_message_queued",
+              "caller": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "triggerMessageId": "message_message_queued",
+              "purpose": "topic",
+              "invitedMember": null,
+              "text": "最近大家",
+              "status": "streaming",
+              "startedSequence": 5,
+              "createdAt": "2026-11-03T09:00:00.300Z",
+              "updatedAt": "2026-11-03T09:00:00.400Z",
+              "error": null
+            }
+          ],
+          "invocations": [
+            {
+              "id": "invocation_message_queued",
+              "source": "host",
+              "caller": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "triggerMessageId": "message_message_queued",
+              "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+              "status": "running",
+              "queuePosition": null,
+              "replyId": "reply_message_queued",
+              "createdAt": "2026-11-03T09:00:00.000Z",
+              "createdSequence": 4,
+              "startedAt": "2026-11-03T09:00:00.300Z",
+              "finishedAt": null,
+              "expiresAt": null,
+              "error": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "atMs": 100,
+      "message": {
+        "type": "ai.reply.delta",
+        "eventId": "event_7",
+        "roomId": "room_demo",
+        "sequence": 7,
+        "occurredAt": "2026-11-03T09:00:00.500Z",
+        "data": {
+          "invocationId": "invocation_message_queued",
+          "replyId": "reply_message_queued",
+          "textDelta": "看过什么好电影？"
+        }
+      }
+    },
+    {
+      "atMs": 200,
+      "message": {
+        "type": "ai.reply.completed",
+        "eventId": "event_8",
+        "roomId": "room_demo",
+        "sequence": 8,
+        "occurredAt": "2026-11-03T09:00:00.600Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_message_queued",
+            "source": "host",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "status": "completed",
+            "queuePosition": null,
+            "replyId": "reply_message_queued",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 4,
+            "startedAt": "2026-11-03T09:00:00.300Z",
+            "finishedAt": "2026-11-03T09:00:00.600Z",
+            "expiresAt": null,
+            "error": null
+          },
+          "reply": {
+            "id": "reply_message_queued",
+            "kind": "ai",
+            "invocationId": "invocation_message_queued",
+            "caller": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "triggerMessageId": "message_message_queued",
+            "purpose": "topic",
+            "invitedMember": null,
+            "text": "最近大家看过什么好电影？",
+            "status": "completed",
+            "startedSequence": 5,
+            "createdAt": "2026-11-03T09:00:00.300Z",
+            "updatedAt": "2026-11-03T09:00:00.600Z",
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 300,
+      "message": {
+        "type": "topic.changed",
+        "eventId": "event_9",
+        "roomId": "room_demo",
+        "sequence": 9,
+        "occurredAt": "2026-11-03T09:00:00.700Z",
+        "data": {
+          "topic": {
+            "id": "topic_movie",
+            "title": "最近看的电影",
+            "content": "最近大家看过什么好电影？",
+            "kind": "common",
+            "sourceLabel": "备用精选",
+            "sourceUrl": null,
+            "publishedAt": "2026-11-03T09:00:00.700Z"
+          }
+        }
+      }
+    }
+  ],
+  "expectedReplies": {
+    "reply_message_queued": {
+      "status": "completed",
+      "text": "最近大家看过什么好电影？"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@talk-together/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "types": "./generated/api.d.ts",
+  "exports": {
+    ".": { "types": "./generated/api.d.ts" },
+    "./openapi.json": "./openapi.json",
+    "./models.schema.json": "./models.schema.json",
+    "./events.schema.json": "./events.schema.json"
+  },
+  "engines": {
+    "node": ">=24.18.0"
+  },
+  "scripts": {
+    "check": "node check.mjs",
+    "mock:http": "prism mock openapi.json --host 127.0.0.1 --port 4010",
+    "mock:ws": "node mock-ws.mjs",
+    "types": "openapi-typescript openapi.json -o generated/api.d.ts"
+  },
+  "devDependencies": {
+    "@stoplight/prism-cli": "5.16.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "openapi-typescript": "7.13.0",
+    "ws": "8.22.1"
+  }
+}

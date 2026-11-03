@@ -1,0 +1,155 @@
+{
+  "description": "退出或移出同步当前身份连接，不能靠关闭单个页面保留旧入房。",
+  "baseTime": "2026-11-03T09:00:01.000Z",
+  "viewer": {
+    "memberId": "member_guest",
+    "membershipId": "membership_guest",
+    "role": "member",
+    "joinedSequence": 2
+  },
+  "httpExamples": [],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 6,
+        "capturedAt": "2026-11-03T09:00:01.000Z",
+        "data": {
+          "self": {
+            "memberId": "member_guest",
+            "membershipId": "membership_guest",
+            "role": "member",
+            "joinedSequence": 2
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            },
+            {
+              "id": "member_guest",
+              "role": "member",
+              "profile": {
+                "nickname": "小周",
+                "interestTags": [
+                  "旅行"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_guest",
+                "joinedSequence": 2,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [
+            {
+              "id": "message_message_queued",
+              "kind": "member",
+              "author": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "text": "@AI 帮我们找一个共同话题",
+              "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+              "createdAt": "2026-11-03T09:00:00.000Z",
+              "createdSequence": 3
+            },
+            {
+              "id": "reply_message_queued",
+              "kind": "ai",
+              "invocationId": "invocation_message_queued",
+              "caller": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "triggerMessageId": "message_message_queued",
+              "purpose": "topic",
+              "invitedMember": null,
+              "text": "最近大家",
+              "status": "streaming",
+              "startedSequence": 5,
+              "createdAt": "2026-11-03T09:00:00.300Z",
+              "updatedAt": "2026-11-03T09:00:00.400Z",
+              "error": null
+            }
+          ],
+          "invocations": [
+            {
+              "id": "invocation_message_queued",
+              "source": "host",
+              "caller": {
+                "memberId": "member_host",
+                "nickname": "小林"
+              },
+              "triggerMessageId": "message_message_queued",
+              "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+              "status": "running",
+              "queuePosition": null,
+              "replyId": "reply_message_queued",
+              "createdAt": "2026-11-03T09:00:00.000Z",
+              "createdSequence": 4,
+              "startedAt": "2026-11-03T09:00:00.300Z",
+              "finishedAt": null,
+              "expiresAt": null,
+              "error": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "atMs": 200,
+      "message": {
+        "type": "member.left",
+        "eventId": "event_7",
+        "roomId": "room_demo",
+        "sequence": 7,
+        "occurredAt": "2026-11-03T09:00:01.200Z",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "reason": "left"
+        }
+      }
+    }
+  ],
+  "expectedReplies": {},
+  "close": {
+    "code": 1000,
+    "reason": "left"
+  }
+}

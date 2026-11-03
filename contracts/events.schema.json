@@ -1,0 +1,884 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TalkTogether server-to-client WebSocket messages",
+  "$ref": "#/$defs/ServerMessage",
+  "$defs": {
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "room.snapshot"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "capturedAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "$ref": "./models.schema.json#/$defs/SnapshotData"
+        }
+      },
+      "required": [
+        "type",
+        "roomId",
+        "cursor",
+        "capturedAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "member_joined": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "member.joined"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "member": {
+              "$ref": "./models.schema.json#/$defs/ActiveMember"
+            }
+          },
+          "required": [
+            "member"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "member_updated": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "member.updated"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "member": {
+              "$ref": "./models.schema.json#/$defs/ActiveMember"
+            }
+          },
+          "required": [
+            "member"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "member_presence_changed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "member.presence.changed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "memberId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "membershipId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "presence": {
+              "type": "string",
+              "enum": [
+                "connecting",
+                "online",
+                "offline"
+              ]
+            },
+            "recoveryExpiresAt": {
+              "anyOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "memberId",
+            "membershipId",
+            "presence",
+            "recoveryExpiresAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "member_left": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "member.left"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "memberId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "membershipId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "left",
+                "timeout"
+              ]
+            }
+          },
+          "required": [
+            "memberId",
+            "membershipId",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "member_removed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "member.removed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "memberId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "membershipId": {
+              "anyOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "memberId",
+            "membershipId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "message_created": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "message.created"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "$ref": "./models.schema.json#/$defs/MemberMessage"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_invocation_updated": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.invocation.updated"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocation": {
+              "$ref": "./models.schema.json#/$defs/Invocation"
+            }
+          },
+          "required": [
+            "invocation"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_reply_started": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.reply.started"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocation": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Invocation"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "running"
+                    }
+                  }
+                }
+              ]
+            },
+            "reply": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/AIReply"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "streaming"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "invocation",
+            "reply"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_reply_delta": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.reply.delta"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocationId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "replyId": {
+              "$ref": "./models.schema.json#/$defs/Id"
+            },
+            "textDelta": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "invocationId",
+            "replyId",
+            "textDelta"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_reply_completed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.reply.completed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocation": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Invocation"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "completed"
+                    }
+                  }
+                }
+              ]
+            },
+            "reply": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/AIReply"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "completed"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "invocation",
+            "reply"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_reply_failed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.reply.failed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocation": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Invocation"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "failed"
+                    }
+                  }
+                }
+              ]
+            },
+            "reply": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/AIReply"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "failed"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "invocation",
+            "reply"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ai_reply_cancelled": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "ai.reply.cancelled"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "invocation": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Invocation"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "cancelled"
+                    }
+                  }
+                }
+              ]
+            },
+            "reply": {
+              "allOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/AIReply"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": "cancelled"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "invocation",
+            "reply"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "topic_changed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "topic.changed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "topic": {
+              "$ref": "./models.schema.json#/$defs/Topic"
+            }
+          },
+          "required": [
+            "topic"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "room_updated": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "room.updated"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "host_reconnecting"
+              ]
+            },
+            "hostRecoveryExpiresAt": {
+              "anyOf": [
+                {
+                  "$ref": "./models.schema.json#/$defs/Time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "status",
+            "hostRecoveryExpiresAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "room_closed": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "room.closed"
+        },
+        "eventId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "roomId": {
+          "$ref": "./models.schema.json#/$defs/Id"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "$ref": "./models.schema.json#/$defs/Time"
+        },
+        "data": {
+          "$ref": "./models.schema.json#/$defs/ClosedData"
+        }
+      },
+      "required": [
+        "type",
+        "eventId",
+        "roomId",
+        "sequence",
+        "occurredAt",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ServerMessage": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Snapshot"
+        },
+        {
+          "$ref": "#/$defs/member_joined"
+        },
+        {
+          "$ref": "#/$defs/member_updated"
+        },
+        {
+          "$ref": "#/$defs/member_presence_changed"
+        },
+        {
+          "$ref": "#/$defs/member_left"
+        },
+        {
+          "$ref": "#/$defs/member_removed"
+        },
+        {
+          "$ref": "#/$defs/message_created"
+        },
+        {
+          "$ref": "#/$defs/ai_invocation_updated"
+        },
+        {
+          "$ref": "#/$defs/ai_reply_started"
+        },
+        {
+          "$ref": "#/$defs/ai_reply_delta"
+        },
+        {
+          "$ref": "#/$defs/ai_reply_completed"
+        },
+        {
+          "$ref": "#/$defs/ai_reply_failed"
+        },
+        {
+          "$ref": "#/$defs/ai_reply_cancelled"
+        },
+        {
+          "$ref": "#/$defs/topic_changed"
+        },
+        {
+          "$ref": "#/$defs/room_updated"
+        },
+        {
+          "$ref": "#/$defs/room_closed"
+        }
+      ]
+    }
+  }
+}

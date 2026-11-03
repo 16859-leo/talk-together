@@ -1,0 +1,177 @@
+{
+  "description": "加入、资料修改与普通成员掉线占位，60 秒后释放席位。",
+  "baseTime": "2026-11-03T09:00:00.000Z",
+  "viewer": {
+    "memberId": "member_host",
+    "membershipId": "membership_host",
+    "role": "host",
+    "joinedSequence": 1
+  },
+  "httpExamples": [
+    "join_room",
+    "profile_updated"
+  ],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 1,
+        "capturedAt": "2026-11-03T09:00:00.000Z",
+        "data": {
+          "self": {
+            "memberId": "member_host",
+            "membershipId": "membership_host",
+            "role": "host",
+            "joinedSequence": 1
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 1,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [],
+          "invocations": []
+        }
+      }
+    },
+    {
+      "atMs": 100,
+      "message": {
+        "type": "member.joined",
+        "eventId": "event_2",
+        "roomId": "room_demo",
+        "sequence": 2,
+        "occurredAt": "2026-11-03T09:00:00.100Z",
+        "data": {
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": ""
+            },
+            "membership": {
+              "id": "membership_guest",
+              "joinedSequence": 2,
+              "joinedAt": "2026-11-03T09:00:00.100Z",
+              "presence": "connecting",
+              "recoveryExpiresAt": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "atMs": 200,
+      "message": {
+        "type": "member.presence.changed",
+        "eventId": "event_3",
+        "roomId": "room_demo",
+        "sequence": 3,
+        "occurredAt": "2026-11-03T09:00:00.200Z",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "presence": "online",
+          "recoveryExpiresAt": null
+        }
+      }
+    },
+    {
+      "atMs": 300,
+      "message": {
+        "type": "member.updated",
+        "eventId": "event_4",
+        "roomId": "room_demo",
+        "sequence": 4,
+        "occurredAt": "2026-11-03T09:00:00.300Z",
+        "data": {
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": "最近在读科幻小说"
+            },
+            "membership": {
+              "id": "membership_guest",
+              "joinedSequence": 2,
+              "joinedAt": "2026-11-03T09:00:00.100Z",
+              "presence": "online",
+              "recoveryExpiresAt": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "atMs": 400,
+      "message": {
+        "type": "member.presence.changed",
+        "eventId": "event_5",
+        "roomId": "room_demo",
+        "sequence": 5,
+        "occurredAt": "2026-11-03T09:00:00.400Z",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "presence": "offline",
+          "recoveryExpiresAt": "2026-11-03T09:01:00.400Z"
+        }
+      }
+    },
+    {
+      "atMs": 60400,
+      "message": {
+        "type": "member.left",
+        "eventId": "event_6",
+        "roomId": "room_demo",
+        "sequence": 6,
+        "occurredAt": "2026-11-03T09:01:00.400Z",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "reason": "timeout"
+        }
+      }
+    }
+  ],
+  "expectedReplies": {}
+}

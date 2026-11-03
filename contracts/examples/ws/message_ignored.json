@@ -1,0 +1,111 @@
+{
+  "description": "成员文字成功发布，AI 不创建调用。",
+  "baseTime": "2026-11-03T09:00:00.000Z",
+  "viewer": {
+    "memberId": "member_guest",
+    "membershipId": "membership_guest",
+    "role": "member",
+    "joinedSequence": 2
+  },
+  "httpExamples": [
+    "message_ignored"
+  ],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 2,
+        "capturedAt": "2026-11-03T09:00:00.000Z",
+        "data": {
+          "self": {
+            "memberId": "member_guest",
+            "membershipId": "membership_guest",
+            "role": "member",
+            "joinedSequence": 2
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            },
+            {
+              "id": "member_guest",
+              "role": "member",
+              "profile": {
+                "nickname": "小周",
+                "interestTags": [
+                  "旅行"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_guest",
+                "joinedSequence": 2,
+                "joinedAt": "2026-11-03T09:00:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [],
+          "invocations": []
+        }
+      }
+    },
+    {
+      "atMs": 100,
+      "message": {
+        "type": "message.created",
+        "eventId": "event_3",
+        "roomId": "room_demo",
+        "sequence": 3,
+        "occurredAt": "2026-11-03T09:00:00.100Z",
+        "data": {
+          "message": {
+            "id": "message_message_ignored",
+            "kind": "member",
+            "author": {
+              "memberId": "member_guest",
+              "nickname": "小周"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "b9513a35-ce13-5893-a7f2-5bf2fa4f65aa",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          }
+        }
+      }
+    }
+  ],
+  "expectedReplies": {}
+}

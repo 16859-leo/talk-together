@@ -1,0 +1,1200 @@
+{
+  "client_config": {
+    "operationId": "getClientConfig",
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/client-config",
+      "headers": {}
+    },
+    "status": 200,
+    "responseSchema": "ClientConfigResponse",
+    "response": {
+      "summary": "client_config",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "contractVersion": "0.1.0",
+          "validation": {
+            "nickname": {
+              "minLength": 1,
+              "maxLength": null
+            },
+            "interestTag": {
+              "minLength": 1,
+              "maxLength": null
+            },
+            "bio": {
+              "minLength": 0,
+              "maxLength": null
+            },
+            "message": {
+              "minLength": 1,
+              "maxLength": null
+            },
+            "interestTags": {
+              "minItems": 1,
+              "maxItems": null
+            }
+          }
+        },
+        "requestId": "req_client_config"
+      }
+    }
+  },
+  "create_room": {
+    "operationId": "createRoom",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms",
+      "headers": {},
+      "body": {
+        "clientRequestId": "cdc1d893-51d6-5465-8b70-f3931d95c0ee",
+        "bootstrapToken": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "profile": {
+          "nickname": "小林",
+          "interestTags": [
+            "阅读",
+            "电影"
+          ],
+          "bio": ""
+        }
+      }
+    },
+    "status": 201,
+    "responseSchema": "RoomEntryResponse",
+    "response": {
+      "summary": "create_room",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 1,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "member": {
+            "id": "member_host",
+            "role": "host",
+            "profile": {
+              "nickname": "小林",
+              "interestTags": [
+                "阅读",
+                "电影"
+              ],
+              "bio": ""
+            },
+            "membership": {
+              "id": "membership_host",
+              "joinedSequence": 1,
+              "joinedAt": "2026-11-03T09:00:00.000Z",
+              "presence": "connecting",
+              "recoveryExpiresAt": null
+            }
+          },
+          "memberCredential": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "requestId": "req_create_room"
+      }
+    }
+  },
+  "join_room": {
+    "operationId": "joinRoom",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/members",
+      "headers": {},
+      "body": {
+        "clientRequestId": "d870d1fa-73bf-5a2a-a5c0-8429f5cdbbee",
+        "bootstrapToken": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "profile": {
+          "nickname": "小周",
+          "interestTags": [
+            "旅行"
+          ],
+          "bio": ""
+        }
+      }
+    },
+    "status": 201,
+    "responseSchema": "RoomEntryResponse",
+    "response": {
+      "summary": "join_room",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": ""
+            },
+            "membership": {
+              "id": "membership_guest",
+              "joinedSequence": 2,
+              "joinedAt": "2026-11-03T09:00:00.000Z",
+              "presence": "online",
+              "recoveryExpiresAt": null
+            }
+          },
+          "memberCredential": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "requestId": "req_join_room"
+      }
+    }
+  },
+  "join_reuse": {
+    "operationId": "joinRoom",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/members",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "X-Membership-Id": "membership_guest"
+      },
+      "body": {
+        "clientRequestId": "746707f7-2bf4-502d-9fd4-7830e285fedc",
+        "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "profile": {
+          "nickname": "小周",
+          "interestTags": [
+            "旅行"
+          ],
+          "bio": ""
+        }
+      }
+    },
+    "status": 200,
+    "responseSchema": "RoomEntryResponse",
+    "response": {
+      "summary": "join_reuse",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": null,
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": ""
+            },
+            "membership": {
+              "id": "membership_guest",
+              "joinedSequence": 2,
+              "joinedAt": "2026-11-03T09:00:00.000Z",
+              "presence": "online",
+              "recoveryExpiresAt": null
+            }
+          },
+          "memberCredential": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "requestId": "req_join_reuse"
+      }
+    }
+  },
+  "self_active": {
+    "operationId": "getSelf",
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/rooms/room_demo/members/me",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "status": 200,
+    "responseSchema": "SelfResponse",
+    "response": {
+      "summary": "self_active",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "member": {
+            "id": "member_host",
+            "role": "host",
+            "profile": {
+              "nickname": "小林",
+              "interestTags": [
+                "阅读",
+                "电影"
+              ],
+              "bio": ""
+            },
+            "membership": {
+              "id": "membership_host",
+              "joinedSequence": 1,
+              "joinedAt": "2026-11-03T09:00:00.000Z",
+              "presence": "online",
+              "recoveryExpiresAt": null
+            }
+          }
+        },
+        "requestId": "req_self_active"
+      }
+    }
+  },
+  "self_left": {
+    "operationId": "getSelf",
+    "request": {
+      "method": "GET",
+      "path": "/api/v1/rooms/room_demo/members/me",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
+    "status": 200,
+    "responseSchema": "SelfResponse",
+    "response": {
+      "summary": "self_left",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": ""
+            },
+            "membership": null
+          }
+        },
+        "requestId": "req_self_left"
+      }
+    }
+  },
+  "profile_updated": {
+    "operationId": "updateSelf",
+    "request": {
+      "method": "PATCH",
+      "path": "/api/v1/rooms/room_demo/members/me",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "X-Membership-Id": "membership_guest"
+      },
+      "body": {
+        "bio": "最近在读科幻小说"
+      }
+    },
+    "status": 200,
+    "responseSchema": "UpdateProfileResponse",
+    "response": {
+      "summary": "profile_updated",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "member": {
+            "id": "member_guest",
+            "role": "member",
+            "profile": {
+              "nickname": "小周",
+              "interestTags": [
+                "旅行"
+              ],
+              "bio": "最近在读科幻小说"
+            },
+            "membership": {
+              "id": "membership_guest",
+              "joinedSequence": 2,
+              "joinedAt": "2026-11-03T09:00:00.000Z",
+              "presence": "online",
+              "recoveryExpiresAt": null
+            }
+          }
+        },
+        "requestId": "req_profile_updated"
+      }
+    }
+  },
+  "leave_member": {
+    "operationId": "leaveRoom",
+    "request": {
+      "method": "DELETE",
+      "path": "/api/v1/rooms/room_demo/members/me",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "X-Membership-Id": "membership_guest"
+      }
+    },
+    "status": 200,
+    "responseSchema": "LeaveResponse",
+    "response": {
+      "summary": "leave_member",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "roomClosed": false
+        },
+        "requestId": "req_leave_member"
+      }
+    }
+  },
+  "leave_host": {
+    "operationId": "leaveRoom",
+    "request": {
+      "method": "DELETE",
+      "path": "/api/v1/rooms/room_demo/members/me",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      }
+    },
+    "status": 200,
+    "responseSchema": "LeaveResponse",
+    "response": {
+      "summary": "leave_host",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "memberId": "member_host",
+          "membershipId": "membership_host",
+          "roomClosed": true
+        },
+        "requestId": "req_leave_host"
+      }
+    }
+  },
+  "remove_member": {
+    "operationId": "removeMember",
+    "request": {
+      "method": "DELETE",
+      "path": "/api/v1/rooms/room_demo/members/member_guest",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      }
+    },
+    "status": 200,
+    "responseSchema": "RemoveResponse",
+    "response": {
+      "summary": "remove_member",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "removed": true
+        },
+        "requestId": "req_remove_member"
+      }
+    }
+  },
+  "close_room": {
+    "operationId": "closeRoom",
+    "request": {
+      "method": "DELETE",
+      "path": "/api/v1/rooms/room_demo",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      }
+    },
+    "status": 200,
+    "responseSchema": "ClosedResponse",
+    "response": {
+      "summary": "close_room",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "roomId": "room_demo",
+          "reason": "host_closed",
+          "closedAt": "2026-11-03T09:00:00.000Z"
+        },
+        "requestId": "req_close_room"
+      }
+    }
+  },
+  "message_queued": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      },
+      "body": {
+        "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+        "text": "@AI 帮我们找一个共同话题",
+        "mentions": [
+          "ai"
+        ]
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_queued",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_queued",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "1b8c6e92-f965-5bef-bc10-08c106af2891",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "queued",
+            "invocationId": "invocation_message_queued"
+          }
+        },
+        "requestId": "req_message_queued"
+      }
+    }
+  },
+  "message_running": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      },
+      "body": {
+        "clientRequestId": "94539559-1972-5324-b3dd-418cbae02f89",
+        "text": "@AI 帮我们找一个共同话题",
+        "mentions": [
+          "ai"
+        ]
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_running",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_running",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "94539559-1972-5324-b3dd-418cbae02f89",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "running",
+            "invocationId": "invocation_message_running"
+          }
+        },
+        "requestId": "req_message_running"
+      }
+    }
+  },
+  "message_plain": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      },
+      "body": {
+        "clientRequestId": "d5b1f7d8-c153-56d3-980d-ce7b3489ec43",
+        "text": "大家最近看了什么电影？",
+        "mentions": []
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_plain",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_plain",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "大家最近看了什么电影？",
+            "clientRequestId": "d5b1f7d8-c153-56d3-980d-ce7b3489ec43",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "not_requested"
+          }
+        },
+        "requestId": "req_message_plain"
+      }
+    }
+  },
+  "message_ignored": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "X-Membership-Id": "membership_guest"
+      },
+      "body": {
+        "clientRequestId": "b9513a35-ce13-5893-a7f2-5bf2fa4f65aa",
+        "text": "@AI 帮我们找一个共同话题",
+        "mentions": [
+          "ai"
+        ]
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_ignored",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_ignored",
+            "kind": "member",
+            "author": {
+              "memberId": "member_guest",
+              "nickname": "小周"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "b9513a35-ce13-5893-a7f2-5bf2fa4f65aa",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "ignored"
+          }
+        },
+        "requestId": "req_message_ignored"
+      }
+    }
+  },
+  "message_ai_limited": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      },
+      "body": {
+        "clientRequestId": "91fc16e6-4fa0-50cf-bbca-5ae7e7494ae3",
+        "text": "@AI 帮我们找一个共同话题",
+        "mentions": [
+          "ai"
+        ]
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_ai_limited",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_ai_limited",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "91fc16e6-4fa0-50cf-bbca-5ae7e7494ae3",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "rejected",
+            "error": {
+              "code": "AI_RATE_LIMITED",
+              "message": "AI 调用暂时受限",
+              "retryAfterMs": 2500
+            }
+          }
+        },
+        "requestId": "req_message_ai_limited"
+      }
+    }
+  },
+  "message_queue_full": {
+    "operationId": "sendMessage",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/messages",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      },
+      "body": {
+        "clientRequestId": "00eb8c01-a988-5078-8402-1c6c9e221c77",
+        "text": "@AI 帮我们找一个共同话题",
+        "mentions": [
+          "ai"
+        ]
+      }
+    },
+    "status": 201,
+    "responseSchema": "SendMessageResponse",
+    "response": {
+      "summary": "message_queue_full",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "message": {
+            "id": "message_message_queue_full",
+            "kind": "member",
+            "author": {
+              "memberId": "member_host",
+              "nickname": "小林"
+            },
+            "text": "@AI 帮我们找一个共同话题",
+            "clientRequestId": "00eb8c01-a988-5078-8402-1c6c9e221c77",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 3
+          },
+          "ai": {
+            "status": "rejected",
+            "error": {
+              "code": "AI_QUEUE_FULL",
+              "message": "AI 等待队列已满",
+              "retryAfterMs": null
+            }
+          }
+        },
+        "requestId": "req_message_queue_full"
+      }
+    }
+  },
+  "connection_ticket": {
+    "operationId": "createConnectionTicket",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/connection-tickets",
+      "headers": {
+        "Authorization": "Bearer aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "X-Membership-Id": "membership_host"
+      }
+    },
+    "status": 201,
+    "responseSchema": "ConnectionTicketResponse",
+    "response": {
+      "summary": "connection_ticket",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "roomId": "room_demo",
+          "memberId": "member_host",
+          "membershipId": "membership_host",
+          "ticket": "9999999999999999999999999999999999999999999999999999999999999999",
+          "expiresAt": "2099-01-01T00:00:00.000Z",
+          "webSocketUrl": "ws://127.0.0.1:4011/api/v1/rooms/room_demo/events?ticket=9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "requestId": "req_connection_ticket"
+      }
+    }
+  },
+  "bad_profile": {
+    "status": 400,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "资料不符合要求",
+      "value": {
+        "code": "VALIDATION_ERROR",
+        "message": "资料不符合要求",
+        "data": {
+          "fieldErrors": [
+            {
+              "path": "/profile/nickname",
+              "message": "昵称不能为空"
+            }
+          ],
+          "retryAfterMs": null
+        },
+        "requestId": "req_bad_profile"
+      }
+    }
+  },
+  "bad_member": {
+    "status": 401,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "成员凭证无效",
+      "value": {
+        "code": "MEMBER_CREDENTIAL_INVALID",
+        "message": "成员凭证无效",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_bad_member"
+      }
+    }
+  },
+  "inactive": {
+    "status": 403,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "当前身份尚未加入房间",
+      "value": {
+        "code": "MEMBERSHIP_INACTIVE",
+        "message": "当前身份尚未加入房间",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_inactive"
+      }
+    }
+  },
+  "membership_changed": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "本次入房状态已改变",
+      "value": {
+        "code": "MEMBERSHIP_CHANGED",
+        "message": "本次入房状态已改变",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_membership_changed"
+      }
+    }
+  },
+  "kicked": {
+    "status": 403,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "当前身份已被移出",
+      "value": {
+        "code": "MEMBER_REMOVED",
+        "message": "当前身份已被移出",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_kicked"
+      }
+    }
+  },
+  "wrong_host": {
+    "status": 403,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "仅房主可执行",
+      "value": {
+        "code": "HOST_REQUIRED",
+        "message": "仅房主可执行",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_wrong_host"
+      }
+    }
+  },
+  "host_protected": {
+    "status": 403,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "不能移出房主",
+      "value": {
+        "code": "HOST_PROTECTED",
+        "message": "不能移出房主",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_host_protected"
+      }
+    }
+  },
+  "missing_room": {
+    "status": 404,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "房间不存在或已关闭",
+      "value": {
+        "code": "ROOM_UNAVAILABLE",
+        "message": "房间不存在或已关闭",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_missing_room"
+      }
+    }
+  },
+  "missing_member": {
+    "status": 404,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "成员不存在",
+      "value": {
+        "code": "MEMBER_NOT_FOUND",
+        "message": "成员不存在",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_missing_member"
+      }
+    }
+  },
+  "wrong_invite": {
+    "status": 404,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "邀请入口无效",
+      "value": {
+        "code": "INVITATION_INVALID",
+        "message": "邀请入口无效",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_wrong_invite"
+      }
+    }
+  },
+  "full_room": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "房间已满",
+      "value": {
+        "code": "ROOM_FULL",
+        "message": "房间已满",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_full_room"
+      }
+    }
+  },
+  "nickname_taken": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "昵称已被占用",
+      "value": {
+        "code": "NICKNAME_TAKEN",
+        "message": "昵称已被占用",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_nickname_taken"
+      }
+    }
+  },
+  "duplicate_conflict": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "同次发送标识对应不同内容",
+      "value": {
+        "code": "IDEMPOTENCY_CONFLICT",
+        "message": "同次发送标识对应不同内容",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_duplicate_conflict"
+      }
+    }
+  },
+  "duplicate_context": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "原发送不属于本次入房",
+      "value": {
+        "code": "IDEMPOTENCY_CONTEXT_EXPIRED",
+        "message": "原发送不属于本次入房",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_duplicate_context"
+      }
+    }
+  },
+  "bootstrap_conflict": {
+    "status": 409,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "引导凭证已用于其他操作",
+      "value": {
+        "code": "BOOTSTRAP_CONFLICT",
+        "message": "引导凭证已用于其他操作",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_bootstrap_conflict"
+      }
+    }
+  },
+  "message_limited": {
+    "status": 429,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "消息发送过快",
+      "value": {
+        "code": "MESSAGE_RATE_LIMITED",
+        "message": "消息发送过快",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": 2500
+        },
+        "requestId": "req_message_limited"
+      }
+    }
+  },
+  "ip_limited": {
+    "status": 429,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "当前网络请求过快",
+      "value": {
+        "code": "IP_RATE_LIMITED",
+        "message": "当前网络请求过快",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": 2500
+        },
+        "requestId": "req_ip_limited"
+      }
+    }
+  },
+  "ticket_invalid": {
+    "status": 401,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "连接票据无效",
+      "value": {
+        "code": "CONNECTION_TICKET_INVALID",
+        "message": "连接票据无效",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_ticket_invalid"
+      }
+    }
+  },
+  "ticket_expired": {
+    "status": 401,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "连接票据已失效",
+      "value": {
+        "code": "CONNECTION_TICKET_EXPIRED",
+        "message": "连接票据已失效",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_ticket_expired"
+      }
+    }
+  },
+  "ticket_used": {
+    "status": 401,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "连接票据已使用",
+      "value": {
+        "code": "CONNECTION_TICKET_USED",
+        "message": "连接票据已使用",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_ticket_used"
+      }
+    }
+  },
+  "service_unavailable": {
+    "status": 503,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "服务暂时不可用",
+      "value": {
+        "code": "SERVICE_UNAVAILABLE",
+        "message": "服务暂时不可用",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_service_unavailable"
+      }
+    }
+  },
+  "internal_error": {
+    "status": 500,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "请求暂未完成",
+      "value": {
+        "code": "INTERNAL_ERROR",
+        "message": "请求暂未完成",
+        "data": {
+          "fieldErrors": [],
+          "retryAfterMs": null
+        },
+        "requestId": "req_internal_error"
+      }
+    }
+  },
+  "connection_ticket_guest": {
+    "operationId": "createConnectionTicket",
+    "request": {
+      "method": "POST",
+      "path": "/api/v1/rooms/room_demo/connection-tickets",
+      "headers": {
+        "Authorization": "Bearer cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "X-Membership-Id": "membership_guest"
+      }
+    },
+    "status": 201,
+    "responseSchema": "ConnectionTicketResponse",
+    "response": {
+      "summary": "guest connection ticket",
+      "value": {
+        "code": "OK",
+        "message": "",
+        "data": {
+          "roomId": "room_demo",
+          "memberId": "member_guest",
+          "membershipId": "membership_guest",
+          "ticket": "9999999999999999999999999999999999999999999999999999999999999999",
+          "expiresAt": "2099-01-01T00:00:00.000Z",
+          "webSocketUrl": "ws://127.0.0.1:4011/api/v1/rooms/room_demo/events?ticket=9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "requestId": "req_connection_ticket"
+      }
+    }
+  },
+  "bad_patch": {
+    "status": 400,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "昵称不能为空",
+      "value": {
+        "code": "VALIDATION_ERROR",
+        "message": "昵称不能为空",
+        "data": {
+          "fieldErrors": [
+            {
+              "path": "/nickname",
+              "message": "昵称不能为空"
+            }
+          ],
+          "retryAfterMs": null
+        },
+        "requestId": "req_bad_patch"
+      }
+    }
+  },
+  "bad_message": {
+    "status": 400,
+    "responseSchema": "ErrorResponse",
+    "response": {
+      "summary": "消息不能为空",
+      "value": {
+        "code": "VALIDATION_ERROR",
+        "message": "消息不能为空",
+        "data": {
+          "fieldErrors": [
+            {
+              "path": "/text",
+              "message": "消息不能为空"
+            }
+          ],
+          "retryAfterMs": null
+        },
+        "requestId": "req_bad_message"
+      }
+    }
+  }
+}

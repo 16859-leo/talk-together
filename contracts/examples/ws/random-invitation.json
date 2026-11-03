@@ -1,0 +1,266 @@
+{
+  "description": "随机邀答明确目标，但不创建等待该成员回答的独占回合。",
+  "baseTime": "2026-11-03T09:00:00.000Z",
+  "viewer": {
+    "memberId": "member_host",
+    "membershipId": "membership_host",
+    "role": "host",
+    "joinedSequence": 1
+  },
+  "httpExamples": [],
+  "frames": [
+    {
+      "atMs": 0,
+      "message": {
+        "type": "room.snapshot",
+        "roomId": "room_demo",
+        "cursor": 20,
+        "capturedAt": "2026-11-03T09:00:00.000Z",
+        "data": {
+          "self": {
+            "memberId": "member_host",
+            "membershipId": "membership_host",
+            "role": "host",
+            "joinedSequence": 1
+          },
+          "room": {
+            "id": "room_demo",
+            "hostMemberId": "member_host",
+            "capacity": 5,
+            "occupiedSlots": 2,
+            "status": "open",
+            "hostRecoveryExpiresAt": null,
+            "currentTopic": {
+              "id": "topic_movie",
+              "title": "最近看的电影",
+              "content": "最近大家看过什么好电影？",
+              "kind": "popular",
+              "sourceLabel": "备用精选",
+              "sourceUrl": null,
+              "publishedAt": "2026-11-03T08:58:30.000Z"
+            },
+            "invitation": {
+              "inviteCode": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "joinPath": "/join/room_demo?inviteCode=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }
+          },
+          "members": [
+            {
+              "id": "member_host",
+              "role": "host",
+              "profile": {
+                "nickname": "小林",
+                "interestTags": [
+                  "阅读",
+                  "电影"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_host",
+                "joinedSequence": 1,
+                "joinedAt": "2026-11-03T08:58:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            },
+            {
+              "id": "member_guest",
+              "role": "member",
+              "profile": {
+                "nickname": "小周",
+                "interestTags": [
+                  "旅行"
+                ],
+                "bio": ""
+              },
+              "membership": {
+                "id": "membership_guest",
+                "joinedSequence": 2,
+                "joinedAt": "2026-11-03T08:58:00.000Z",
+                "presence": "online",
+                "recoveryExpiresAt": null
+              }
+            }
+          ],
+          "messages": [
+            {
+              "id": "reply_previous_topic",
+              "kind": "ai",
+              "invocationId": "invocation_previous_topic",
+              "caller": null,
+              "triggerMessageId": null,
+              "purpose": "topic",
+              "invitedMember": null,
+              "text": "最近看过什么电影？",
+              "status": "completed",
+              "startedSequence": 4,
+              "createdAt": "2026-11-03T08:58:20.000Z",
+              "updatedAt": "2026-11-03T08:58:30.000Z",
+              "error": null
+            }
+          ],
+          "invocations": [
+            {
+              "id": "invocation_previous_topic",
+              "source": "automatic",
+              "caller": null,
+              "triggerMessageId": null,
+              "clientRequestId": null,
+              "status": "completed",
+              "queuePosition": null,
+              "replyId": "reply_previous_topic",
+              "createdAt": "2026-11-03T08:58:19.000Z",
+              "createdSequence": 3,
+              "startedAt": "2026-11-03T08:58:20.000Z",
+              "finishedAt": "2026-11-03T08:58:30.000Z",
+              "expiresAt": null,
+              "error": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "atMs": 100,
+      "message": {
+        "type": "ai.invocation.updated",
+        "eventId": "event_21",
+        "roomId": "room_demo",
+        "sequence": 21,
+        "occurredAt": "2026-11-03T09:00:00.100Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_invitation",
+            "source": "automatic",
+            "caller": null,
+            "triggerMessageId": null,
+            "clientRequestId": null,
+            "status": "queued",
+            "queuePosition": 1,
+            "replyId": null,
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 21,
+            "startedAt": null,
+            "finishedAt": null,
+            "expiresAt": null,
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 200,
+      "message": {
+        "type": "ai.reply.started",
+        "eventId": "event_22",
+        "roomId": "room_demo",
+        "sequence": 22,
+        "occurredAt": "2026-11-03T09:00:00.200Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_invitation",
+            "source": "automatic",
+            "caller": null,
+            "triggerMessageId": null,
+            "clientRequestId": null,
+            "status": "running",
+            "queuePosition": null,
+            "replyId": "reply_invitation",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 21,
+            "startedAt": "2026-11-03T09:00:00.200Z",
+            "finishedAt": null,
+            "expiresAt": null,
+            "error": null
+          },
+          "reply": {
+            "id": "reply_invitation",
+            "kind": "ai",
+            "invocationId": "invocation_invitation",
+            "caller": null,
+            "triggerMessageId": null,
+            "purpose": "invitation",
+            "invitedMember": {
+              "memberId": "member_guest",
+              "nickname": "小周"
+            },
+            "text": "",
+            "status": "streaming",
+            "startedSequence": 22,
+            "createdAt": "2026-11-03T09:00:00.200Z",
+            "updatedAt": "2026-11-03T09:00:00.200Z",
+            "error": null
+          }
+        }
+      }
+    },
+    {
+      "atMs": 300,
+      "message": {
+        "type": "ai.reply.delta",
+        "eventId": "event_23",
+        "roomId": "room_demo",
+        "sequence": 23,
+        "occurredAt": "2026-11-03T09:00:00.300Z",
+        "data": {
+          "invocationId": "invocation_invitation",
+          "replyId": "reply_invitation",
+          "textDelta": "小周，如果愿意，可以聊聊最近看过的电影。"
+        }
+      }
+    },
+    {
+      "atMs": 400,
+      "message": {
+        "type": "ai.reply.completed",
+        "eventId": "event_24",
+        "roomId": "room_demo",
+        "sequence": 24,
+        "occurredAt": "2026-11-03T09:00:00.400Z",
+        "data": {
+          "invocation": {
+            "id": "invocation_invitation",
+            "source": "automatic",
+            "caller": null,
+            "triggerMessageId": null,
+            "clientRequestId": null,
+            "status": "completed",
+            "queuePosition": null,
+            "replyId": "reply_invitation",
+            "createdAt": "2026-11-03T09:00:00.000Z",
+            "createdSequence": 21,
+            "startedAt": "2026-11-03T09:00:00.200Z",
+            "finishedAt": "2026-11-03T09:00:00.400Z",
+            "expiresAt": null,
+            "error": null
+          },
+          "reply": {
+            "id": "reply_invitation",
+            "kind": "ai",
+            "invocationId": "invocation_invitation",
+            "caller": null,
+            "triggerMessageId": null,
+            "purpose": "invitation",
+            "invitedMember": {
+              "memberId": "member_guest",
+              "nickname": "小周"
+            },
+            "text": "小周，如果愿意，可以聊聊最近看过的电影。",
+            "status": "completed",
+            "startedSequence": 22,
+            "createdAt": "2026-11-03T09:00:00.200Z",
+            "updatedAt": "2026-11-03T09:00:00.400Z",
+            "error": null
+          }
+        }
+      }
+    }
+  ],
+  "expectedReplies": {
+    "reply_invitation": {
+      "status": "completed",
+      "text": "小周，如果愿意，可以聊聊最近看过的电影。"
+    }
+  }
+}
