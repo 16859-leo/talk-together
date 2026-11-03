@@ -31,6 +31,8 @@ const counting = (inner: RoomStateStore) => {
     getTicket: t => (bump('getTicket'), inner.getTicket(t)),
     putTicket: (t, r) => (bump('putTicket'), inner.putTicket(t, r)),
     deleteTicket: t => (bump('deleteTicket'), inner.deleteTicket(t)),
+    purgeExpiredTickets: n => (bump('purgeExpiredTickets'), inner.purgeExpiredTickets(n)),
+    deleteTicketsByRoom: id => (bump('deleteTicketsByRoom'), inner.deleteTicketsByRoom(id)),
     getRateWindow: m => (bump('getRateWindow'), inner.getRateWindow(m)),
     putRateWindow: (m, v) => (bump('putRateWindow'), inner.putRateWindow(m, v)),
   };

@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 契约自检 | `npm run check --prefix contracts` | 通过：11 接口 / 49 模型 / 43 HTTP 样例 / 12 WS 场景 |
 | 类型检查 | `npx tsc --noEmit` | 通过（strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`） |
-| 后端测试 | `node --test test/*.test.ts` | **92 / 92 通过** |
+| 后端测试 | `node --test test/*.test.ts` | **103 / 103 通过** |
 | 错误码盘点 | `test/error-codes.test.ts` | 契约 29 个：**22 个有真实触发路径，7 个显式说明未覆盖原因，无遗漏** |
 
 本计划未修改契约任何字段。
@@ -273,7 +273,7 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 
 后端真实输出全部用 `contracts/models.schema.json` 与 `events.schema.json` 做 Draft 2020-12 校验，不自写一套断言。
 
-### 已通过（92 项）
+### 已通过（103 项）
 
 **身份与入房（11 项，`test/http.test.ts`）**
 
@@ -401,7 +401,7 @@ PR #7 的 12 项 review 问题逐项对应失败路径用例，详见第 10 节�
 ## 10. PR #7 review 修复记录
 
 review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已修并补回归测试。
-测试从 58 项增至 82 项（第二轮后为 92 项）。
+测试从 58 项增至 82 项（第二轮 92 项、第三轮 103 项）。
 
 ### P1
 
@@ -466,3 +466,33 @@ review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已�
 
 `test/idle.test.ts` 的「每个话题最多一次随机邀答」原先用 `kind: 'common'`
 构造当前话题，按新语义已改为 `popular`——邀答只在热门话题之后发起。
+
+---
+
+## 12. PR #7 第三轮 review 修复记录
+
+第三轮提出 4 项 P2，均有实测复现，全部已修并补回归测试。测试从 92 项增至 103 项。
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 1 | 上一轮的 `rejoinRequests` 只记录 Bearer 重入请求，**首次加入请求没有记录**；成员匿名加入后退出，携带 Bearer 复用首次加入的 `clientRequestId` 仍返回 201 并创建新 membership，旧请求依然能撤销退出 | 首次匿名加入与建房时也记录请求归属，三条入房路径统一落实「再次入房必须使用新请求 ID」 |
+| 2 | 无话题分支完全忽略 `sinceAuto`：首次自动选题失败后 `currentTopic` 仍为空，下次轮询立即重试；默认配置下每 5 秒打一次模型，而非遵守 45 秒冷却 | 无话题分支也检查冷却；`lastAutoAt === 0`（从未自动发话）时不受冷却阻塞，保证首次选题不被延迟 |
+| 3 | 未消费票据只在消费时删除，既无过期回收也无关房清理；票据过期并关房后 `getTicket()` 仍能取到记录，重复取票会跨房间累积 | `RoomStateStore` 新增 `purgeExpiredTickets()` 与 `deleteTicketsByRoom()`；签发票据时顺带回收过期项，关房时删除该房间全部票据 |
+| 4 | 错误处理器只识别 `statusCode === 400`，Fastify 的 413（请求体过大）、415（媒体类型不支持）全部落入 `500/INTERNAL_ERROR`，把客户端输入问题误报为服务故障并可能触发重试 | 保留全部框架 4xx 的原状态码，按 413／415 给出对应提示，仍包装为统一响应信封 |
+
+### 验证
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx tsc --noEmit` | 通过 |
+| `node --test test/*.test.ts` | **103 / 103 通过**（新增 `test/review-round3.test.ts` 11 项） |
+| `npm run check --prefix contracts` | 通过，契约未改动 |
+| `npm run demo` | 28 步全部达成，无未达预期项 |
+
+第 1、2、4 项做了反向验证：临时还原旧逻辑后对应用例必然失败。
+
+### 一处实测澄清
+
+验证第 4 项时发现：`text/plain` 命中 Fastify **内置**解析器，按 400 处理；
+只有未注册的类型（如 `application/xml`）才产生 415。
+两条路径现在都不会退化为 500，测试分别覆盖。

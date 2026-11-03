@@ -249,6 +249,8 @@ export class RoomService {
     this.store.putCredential(member.credential, { roomId: room.id, memberId: member.id });
     this.store.putInvite(inviteCode, room.id);
     this.store.putBootstrap(body.bootstrapToken, { fingerprint, roomId: room.id, memberId: member.id });
+    // 建房也是一次首次入房，记录请求归属以统一「再次入房需新请求 ID」。
+    this.rejoinRequests.set(`${member.credential}:${body.clientRequestId}`, member.membership!.id);
 
     return { status: 201, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
   }
@@ -321,6 +323,9 @@ export class RoomService {
     room.members.set(member.id, member);
     this.store.putCredential(member.credential, { roomId: room.id, memberId: member.id });
     this.store.putBootstrap(body.bootstrapToken, { fingerprint, roomId: room.id, memberId: member.id });
+    // 首次加入的请求 ID 也要记归属，否则退出后携带 Bearer 复用该 ID
+    // 仍能重新创建入房，绕过「再次入房必须使用新请求 ID」。
+    this.rejoinRequests.set(`${member.credential}:${body.clientRequestId}`, member.membership.id);
     this.announceJoin(room, member);
 
     return { status: 201, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
@@ -458,6 +463,8 @@ export class RoomService {
     this.store.deleteInvite(room.inviteCode);
     // 引导记录的 fingerprint 含资料原文，关房必须一并清理。
     this.store.deleteBootstrapsByRoom(room.id);
+    // 未消费的连接票据同样随房间清理。
+    this.store.deleteTicketsByRoom(room.id);
     this.store.deleteRoom(room.id);
     this.buses.delete(room.id);
     this.ai.delete(room.id);
@@ -576,7 +583,10 @@ export class RoomService {
     const identity = this.requireMembership(roomId, credential, membershipId);
     const membership = identity.member.membership!;
     const ticket = newSecret();
-    const expiresAt = Date.now() + this.config.ticketMs;
+    const now = Date.now();
+    // 借签发时机回收过期的未消费票据，避免记录跨房间持续累积。
+    this.store.purgeExpiredTickets(now);
+    const expiresAt = now + this.config.ticketMs;
     this.store.putTicket(ticket, {
       roomId,
       memberId: identity.member.id,

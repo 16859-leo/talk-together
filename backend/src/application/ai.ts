@@ -103,9 +103,12 @@ export class AiService {
     const silentFor = now - this.room.lastMemberMessageAt;
     if (silentFor < this.config.idle.topicMs) return null;
 
-    // 一级：仍无当前话题，或距上次自动补话已再次冷场，先尝试选题。
     const sinceAuto = now - this.room.lastAutoAt;
+
+    // 一级：仍无当前话题时选题。这里同样要检查冷却，否则首次选题失败后
+    // 每轮轮询都会立刻重试，持续产生失败事件与模型请求。
     if (this.room.currentTopic === null) {
+      if (this.room.lastAutoAt > 0 && sinceAuto < this.config.idle.topicMs) return null;
       return this.fireAutomatic('topic', null, now);
     }
 

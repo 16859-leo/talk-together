@@ -55,6 +55,10 @@ export interface RoomStateStore {
   getTicket(ticket: string): TicketRecord | undefined;
   putTicket(ticket: string, record: TicketRecord): void;
   deleteTicket(ticket: string): void;
+  /** 回收已过期的未消费票据，避免无用记录持续累积。 */
+  purgeExpiredTickets(now: number): void;
+  /** 关房时删除该房间的全部未消费票据。 */
+  deleteTicketsByRoom(roomId: string): void;
 
   // 消息限频窗口
   getRateWindow(memberId: string): number[];
@@ -130,6 +134,18 @@ export class MemoryRoomStateStore implements RoomStateStore {
 
   deleteTicket(ticket: string): void {
     this.tickets.delete(ticket);
+  }
+
+  purgeExpiredTickets(now: number): void {
+    for (const [value, record] of this.tickets) {
+      if (record.expiresAt < now) this.tickets.delete(value);
+    }
+  }
+
+  deleteTicketsByRoom(roomId: string): void {
+    for (const [value, record] of this.tickets) {
+      if (record.roomId === roomId) this.tickets.delete(value);
+    }
   }
 
   getRateWindow(memberId: string): number[] {

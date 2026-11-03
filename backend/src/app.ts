@@ -57,10 +57,16 @@ export interface BuildOptions {
   readonly capability?: Capability;
   /** 可替换的状态存储实现；省略时使用进程内实现。 */
   readonly store?: RoomStateStore;
+  /** 请求体大小上限；仅测试需要调小以构造 413。 */
+  readonly bodyLimit?: number;
 }
 
-export const build = async ({ config, capability, store }: BuildOptions): Promise<FastifyInstance> => {
-  const app = Fastify({ logger: false, genReqId: () => newId('req') });
+export const build = async ({ config, capability, store, bodyLimit }: BuildOptions): Promise<FastifyInstance> => {
+  const app = Fastify({
+    logger: false,
+    genReqId: () => newId('req'),
+    ...(bodyLimit === undefined ? {} : { bodyLimit }),
+  });
   const service = store
     ? new RoomService(config, capability ?? createStubCapability(), store)
     : new RoomService(config, capability ?? createStubCapability());
@@ -98,10 +104,16 @@ export const build = async ({ config, capability, store }: BuildOptions): Promis
         requestId,
       });
     }
-    if ((error as { statusCode?: number }).statusCode === 400) {
-      return reply.status(400).send({
+    // 框架自身的 4xx（400 格式错误、413 请求体过大、415 媒体类型不支持等）
+    // 属于客户端输入问题，必须保留原状态码，不能一律当成服务故障，
+    // 否则客户端会误以为可重试。
+    const status = (error as { statusCode?: number }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      const message =
+        status === 413 ? '请求体过大' : status === 415 ? '不支持的内容类型' : '请求格式不正确';
+      return reply.status(status).send({
         code: 'VALIDATION_ERROR',
-        message: '请求格式不正确',
+        message,
         data: { fieldErrors: [], retryAfterMs: null },
         requestId,
       });
