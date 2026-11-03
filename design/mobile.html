@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>搭个话 · 手机版</title>
+<style>
+  :root{
+    --paper:#faf5eb; --sage:#7cb9a8; --sage-deep:#5fa593; --coral:#e8a87c;
+    --ink:#3a3226; --ink-2:#5a4f42; --muted:#7c6b58;
+    --rule:rgba(139,115,85,.2); --rule-soft:rgba(139,115,85,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:#e9dfcc;
+    font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:15px;line-height:1.7;color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    display:flex;justify-content:center;align-items:center;
+  }
+  [data-p="lin"]{--c1:#4f8f82;--c2:#e4f0ea;--c3:#2f5f56}
+  [data-p="zhou"]{--c1:#4e9aa6;--c2:#e2eff1;--c3:#2c5b64}
+  [data-p="lan"]{--c1:#b16f84;--c2:#f5e6ea;--c3:#6d3b4a}
+  [data-p="chen"]{--c1:#c07f50;--c2:#f6e9db;--c3:#74492a}
+  [data-p="mi"]{--c1:#cfa152;--c2:#f8eed7;--c3:#7a5a20}
+
+  .app{
+    position:relative;width:390px;height:844px;display:flex;flex-direction:column;
+    padding:0 16px;overflow:hidden;border-radius:22px;
+    background:linear-gradient(180deg,#a6dcd1 0%, #cfe4c6 26%, #f0e2bd 58%, #f4d7a9 84%, #edc795 100%);
+    box-shadow:0 30px 60px -28px rgba(70,45,20,.45), 0 0 0 1px rgba(90,60,30,.08);
+  }
+  .app::after{
+    content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.45;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");
+  }
+  .app > *{position:relative;z-index:2}
+
+  /* 状态栏 */
+  .status{display:flex;align-items:center;justify-content:space-between;height:34px;font-size:12px;color:var(--ink-2);flex:none}
+  .status b{font-weight:600}
+
+  /* 顶栏 */
+  .top{display:flex;align-items:center;gap:8px;height:42px;flex:none}
+  .brand{display:flex;align-items:center;gap:7px;font-weight:700;font-size:15.5px;letter-spacing:.03em}
+  .brand .leaf{width:11px;height:11px;background:var(--sage);border-radius:60% 40% 55% 45% / 50% 60% 40% 50%}
+  .room{font-size:12.5px;color:var(--ink-2);margin-left:2px}
+  .top .spacer{flex:1}
+  .icon-btn{width:32px;height:32px;border-radius:11px;border:1.5px solid rgba(96,166,150,.5);
+            background:rgba(250,245,235,.7);display:grid;place-items:center;color:var(--ink-2);font-size:15px}
+  .menu-wrap{position:relative}
+  .menu{position:absolute;right:0;top:40px;width:168px;background:var(--paper);border:1.5px solid rgba(139,115,85,.26);
+        border-radius:16px;padding:6px;z-index:40;box-shadow:0 18px 34px rgba(92,64,51,.2)}
+  .menu[hidden]{display:none}
+  .menu button{display:block;width:100%;text-align:left;font:inherit;font-size:13px;color:var(--ink-2);
+        background:transparent;border:none;border-radius:10px;padding:9px 12px}
+  .menu button.danger{color:#a05d41}
+
+  /* 成员 */
+  .label{display:flex;align-items:center;gap:8px;font-family:ui-monospace,monospace;font-size:10.5px;
+         letter-spacing:.16em;color:var(--muted);margin:4px 0 8px}
+  .label::after{content:"";height:1px;background:var(--rule);flex:1}
+  .seats{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:none}
+  .seat{position:relative;display:flex;align-items:flex-start;gap:8px;padding:7px 9px;
+        border:1.5px solid color-mix(in srgb, var(--c1) 38%, transparent);
+        background:color-mix(in srgb, var(--c2) 80%, #fffdf7);border-radius:14px}
+  .seat.host{grid-column:1 / -1;background:var(--c2);border-color:var(--c1)}
+  .seat.off{border-style:dashed;background:transparent}
+  .seat .av{width:28px;height:28px;flex:none;display:grid;place-items:center;font-size:12px;color:var(--c3);
+            background:var(--c2);border:1.5px solid var(--c1);
+            border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .seat .meta{min-width:0}
+  .seat .nm{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--c3)}
+  .seat .tags{display:flex;gap:4px;margin-top:3px}
+  .seat .tags span{font-size:10px;color:var(--c3);background:rgba(255,253,247,.9);
+        border:1px solid color-mix(in srgb, var(--c1) 26%, transparent);border-radius:999px;padding:0 6px;line-height:1.7}
+  .seat .st{position:absolute;right:8px;top:8px;font-size:9.5px;color:var(--muted);display:flex;align-items:center;gap:4px}
+  .seat .st i{width:5px;height:5px;border-radius:50%;background:var(--c1);display:block}
+  .seat.off .st{color:var(--coral)}
+  .seat.off .st i{background:transparent;border:1.2px solid var(--coral)}
+  .host-tag{font-size:9.5px;color:#fff;background:var(--c1);border-radius:999px;padding:0 6px;font-weight:600}
+
+  /* 聊天 */
+  .chat{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:10px}
+  .chat .label{margin-bottom:6px}
+  .feed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding-bottom:4px}
+  .sys{font-size:11px;color:var(--muted);padding:2px 0 4px;display:flex;align-items:center;gap:6px}
+  .sys i{width:5px;height:5px;border-radius:50%;background:var(--coral);display:block}
+  .msg{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px}
+  .msg .av{width:30px;height:30px;display:grid;place-items:center;font-size:12px;color:var(--c3);
+           background:var(--c2);border:1.5px solid var(--c1);border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .msg .body{justify-self:start;max-width:84%;background:color-mix(in srgb, var(--c2) 88%, #fffdf7);
+             border:1px solid color-mix(in srgb, var(--c1) 24%, transparent);
+             border-radius:16px 16px 16px 6px;padding:6px 11px 7px}
+  .msg .who{display:flex;align-items:baseline;gap:6px}
+  .msg .who .name{font-size:12px;font-weight:600;color:var(--c3)}
+  .msg .who .time{font-size:10.5px;color:var(--muted)}
+  .msg p{font-size:13.5px;line-height:1.6;color:#443a2d;margin-top:1px}
+  .msg.ai{grid-template-columns:minmax(0,1fr)}
+  .msg.ai .body{justify-self:stretch;max-width:100%;background:#fffdf7;
+                border:1.5px dashed rgba(95,165,147,.6);border-radius:16px 16px 6px 16px;padding:8px 12px}
+  .msg.ai .who .badge{font-size:9.5px;letter-spacing:.06em;color:#33524a;background:rgba(124,185,168,.45);
+                      border-radius:999px;padding:0 6px;font-weight:700}
+  .msg.ai p{color:#314a43}
+
+  /* 输入 */
+  .composer{flex:none;padding:8px 0 12px;position:relative}
+  .mention-pop{position:absolute;left:0;bottom:56px;z-index:20}
+  .mention-pop[hidden]{display:none}
+  .mention-pop button{display:flex;align-items:baseline;gap:8px;font:inherit;font-size:12px;
+        background:var(--paper);border:1.5px solid rgba(139,115,85,.26);border-radius:14px;
+        padding:7px 12px;box-shadow:0 12px 22px rgba(92,64,51,.18)}
+  .mention-pop b{color:#3f6156}
+  .mention-pop span{color:var(--muted);font-size:11px}
+  .input{display:flex;align-items:center;gap:8px;border-top:1.5px solid rgba(90,74,58,.45);padding-top:9px}
+  .input input{flex:1;min-width:0;font:inherit;font-size:13.5px;color:#5a4a3a;background:transparent;
+               border:none;outline:none;padding:4px 2px}
+  .input input::placeholder{color:#a4947f}
+  .send{font:inherit;font-size:12.5px;font-weight:600;color:#fff;background:var(--sage-deep);
+        border:none;border-radius:12px;padding:8px 16px;box-shadow:0 2px 8px rgba(124,185,168,.25)}
+  .hint{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:5px}
+
+  /* 气泡 */
+  .bubble{position:fixed;z-index:60;pointer-events:none;left:0;top:0;display:flex;align-items:center;gap:8px;
+          padding:7px 13px 7px 8px;background:#fffdf7;border:1.5px solid color-mix(in srgb, var(--c1) 55%, transparent);
+          border-radius:18px;box-shadow:0 10px 22px color-mix(in srgb, var(--c1) 26%, transparent);
+          font-size:12.5px;line-height:1.5;color:var(--ink);max-width:240px;transform-origin:0 50%}
+  .bubble .av{width:22px;height:22px;display:grid;place-items:center;font-size:11px;flex:none;
+              background:var(--c2);border:1px solid var(--c1);color:var(--c3);
+              border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(58,50,38,.26);backdrop-filter:blur(4px)}
+  .modal[hidden]{display:none}
+  .sheet{width:300px;background:var(--paper);border:1.5px solid rgba(139,115,85,.26);border-radius:26px;
+         padding:20px 18px;text-align:center;box-shadow:0 30px 60px -24px rgba(92,64,51,.5)}
+  .sheet h3{font-size:15px;font-weight:700}
+  .sheet p{font-size:11.5px;color:var(--muted);margin-top:4px}
+  .qr{width:150px;height:150px;margin:12px auto;background:#fffdf7;border-radius:16px;padding:8px;border:1px solid rgba(139,115,85,.16)}
+  .qr svg{width:100%;height:100%;display:block}
+  .sheet .link-row{display:flex;align-items:center;background:#f2ead8;border:1px solid rgba(139,115,85,.16);
+        border-radius:10px;padding:7px 9px;font-family:ui-monospace,monospace;font-size:10px;color:var(--muted);
+        overflow:hidden}
+  .sheet .link-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sheet .actions{display:flex;gap:8px;margin-top:12px}
+  .sheet .btn{flex:1;font:inherit;font-size:12px;padding:8px;border-radius:12px;border:1.5px solid rgba(96,166,150,.5);
+        background:transparent;color:var(--ink-2)}
+  .sheet .btn.solid{background:var(--sage-deep);border-color:var(--sage-deep);color:#fff;font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="status"><b>21:47</b><span>4G · 82%</span></div>
+
+  <div class="top">
+    <div class="brand"><span class="leaf"></span>搭个话</div>
+    <div class="room">小林 的房间</div>
+    <div class="spacer"></div>
+    <div class="menu-wrap">
+      <button class="icon-btn" id="menuBtn">⋯</button>
+      <div class="menu" id="menu" hidden>
+        <button type="button" id="menuInvite">邀请</button>
+        <button type="button" id="menuLeave" class="danger">退出房间</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="label">一桌五人 / SEATS</div>
+  <div class="seats">
+    <div class="seat host" data-p="lin" data-seat="me">
+      <div class="av">林</div>
+      <div class="meta"><div class="nm">小林<span class="host-tag">房主</span></div>
+        <div class="tags"><span>阅读</span><span>电影</span></div></div>
+      <span class="st">在线<i></i></span>
+    </div>
+    <div class="seat" data-p="zhou" data-seat="zhou">
+      <div class="av">周</div>
+      <div class="meta"><div class="nm">小周</div><div class="tags"><span>旅行</span><span>扫街</span></div></div>
+      <span class="st">在线<i></i></span>
+    </div>
+    <div class="seat" data-p="lan" data-seat="lan">
+      <div class="av">岚</div>
+      <div class="meta"><div class="nm">阿岚</div><div class="tags"><span>摄影</span><span>咖啡</span></div></div>
+      <span class="st">在线<i></i></span>
+    </div>
+    <div class="seat off" data-p="chen" data-seat="chen">
+      <div class="av">陈</div>
+      <div class="meta"><div class="nm">老陈</div><div class="tags"><span>游戏</span><span>足球</span></div></div>
+      <span class="st">0:42<i></i></span>
+    </div>
+    <div class="seat" data-p="mi" data-seat="mi">
+      <div class="av">米</div>
+      <div class="meta"><div class="nm">米米</div><div class="tags"><span>烘焙</span><span>猫</span></div></div>
+      <span class="st">在线<i></i></span>
+    </div>
+  </div>
+
+  <section class="chat">
+    <div class="label">聊天 / CHAT</div>
+    <div class="feed" id="feed">
+      <div class="sys"><i></i>老陈 暂时掉线，60 秒内回来还坐原位</div>
+
+      <div class="msg" data-p="lin">
+        <div class="av">林</div>
+        <div class="body"><div class="who"><span class="name">小林</span><span class="time">21:41</span></div>
+          <p>大家平时周末都怎么过？我最近有点两点一线。</p></div>
+      </div>
+      <div class="msg" data-p="zhou">
+        <div class="av">周</div>
+        <div class="body"><div class="who"><span class="name">小周</span><span class="time">21:42</span></div>
+          <p>我一般会出门拍点东西，最近在学扫街。</p></div>
+      </div>
+      <div class="msg" data-p="lan">
+        <div class="av">岚</div>
+        <div class="body"><div class="who"><span class="name">阿岚</span><span class="time">21:43</span></div>
+          <p>周末基本泡在咖啡店，写点东西。</p></div>
+      </div>
+      <div class="msg ai">
+        <div class="body"><div class="who"><span class="badge">AI</span><span class="name">导播</span><span class="time">21:46</span></div>
+          <p>最近大家看过什么好电影？</p></div>
+      </div>
+      <div class="msg" data-p="zhou">
+        <div class="av">周</div>
+        <div class="body"><div class="who"><span class="name">小周</span><span class="time">21:46</span></div>
+          <p>这话题好，我先说：上周看了《周处除三害》。</p></div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="mention-pop" id="mentionPop" hidden>
+        <button type="button" id="mentionAi"><b>AI 导播</b><span>让导播接一句</span></button>
+      </div>
+      <div class="input">
+        <input id="input" placeholder="说点什么，输入 @ 找导播" autocomplete="off" />
+        <button class="send" id="send">发送</button>
+      </div>
+      <div class="hint"><span>仅房主可调用 AI</span><span>4 人在线</span></div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet" id="sheetInvite">
+    <h3>邀请朋友进来</h3>
+    <p>扫一下，或者把链接发给他</p>
+    <div class="qr" id="qr"></div>
+    <div class="link-row"><span>talk-together.app/join/room_demo?inviteCode=ff3a…</span></div>
+    <div class="actions">
+      <button class="btn" data-close>关闭</button>
+      <button class="btn solid" id="copyBtn">复制链接</button>
+    </div>
+  </div>
+  <div class="sheet" id="sheetLeave" hidden>
+    <h3>要退出这个房间吗？</h3>
+    <p>座位会让出来，这次的聊天也不会保留。</p>
+    <div class="actions">
+      <button class="btn" data-close>再想想</button>
+      <button class="btn solid" data-close>退出房间</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const seatEls = new Map();
+  document.querySelectorAll('.seat[data-seat]').forEach(el => seatEls.set(el.dataset.seat, el));
+  const feed = document.getElementById('feed');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const PEOPLE = {
+    me:   { name: '小林', initial: '林', p: 'lin' },
+    zhou: { name: '小周', initial: '周', p: 'zhou' },
+    lan:  { name: '阿岚', initial: '岚', p: 'lan' },
+    mi:   { name: '米米', initial: '米', p: 'mi' },
+    chen: { name: '老陈', initial: '陈', p: 'chen' },
+  };
+
+  const qp = (a,c,b,t) => { const u=1-t; return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y}; };
+
+  function fly(seatEl, person, text) {
+    const row = document.createElement('div');
+    row.className = 'msg'; row.setAttribute('data-p', person.p);
+    row.style.visibility = 'hidden';
+    row.innerHTML = `<div class="av">${person.initial}</div>
+      <div class="body"><div class="who"><span class="name">${person.name}</span><span class="time">21:48</span></div><p></p></div>`;
+    row.querySelector('p').textContent = text;
+    feed.appendChild(row);
+
+    const a0 = seatEl.querySelector('.av').getBoundingClientRect();
+    const b0 = row.getBoundingClientRect();
+    const a = { x: a0.left + a0.width/2 - 46, y: a0.top + a0.height/2 - 14 };
+    const b = { x: b0.left + 46, y: b0.top + 12 };
+    const c = { x: (a.x + b.x)/2 + 20, y: Math.max(a.y,b.y) - 90 };
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble'; bubble.setAttribute('data-p', person.p);
+    bubble.innerHTML = `<span class="av">${person.initial}</span><span class="txt"></span>`;
+    bubble.querySelector('.txt').textContent = text;
+    bubble.style.left = a.x + 'px'; bubble.style.top = a.y + 'px';
+    document.body.appendChild(bubble);
+
+    const frames = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = i/20, p = qp(a,c,b,t);
+      frames.push({ transform:`translate(${p.x-a.x}px,${p.y-a.y}px) scale(${1.02-0.3*t})`, opacity: t>0.9 ? String(1-(t-0.9)*8) : '1' });
+    }
+    const anim = bubble.animate(frames,{duration:600,easing:'cubic-bezier(.45,.05,.55,.95)',fill:'forwards'});
+    anim.onfinish = () => { bubble.remove(); row.style.visibility='visible'; };
+    if (reduce) anim.finish();
+  }
+
+  sendBtn.addEventListener('click', () => {
+    const t = input.value.trim(); if (!t) return;
+    input.value = ''; fly(seatEls.get('me'), PEOPLE.me, t);
+  });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
+  seatEls.forEach((el,key) => el.addEventListener('click', () => {
+    const p = PEOPLE[key]; if (p) fly(el, p, '（点名片示意：' + p.name + ' 发言）');
+  }));
+
+  // @ 建议
+  const mentionPop = document.getElementById('mentionPop');
+  input.addEventListener('input', () => { mentionPop.hidden = !input.value.endsWith('@'); });
+  document.getElementById('mentionAi').addEventListener('click', () => {
+    input.value = input.value.replace(/@$/, '@AI ');
+    mentionPop.hidden = true; input.focus();
+  });
+
+  // 菜单 / 弹窗
+  const menu = document.getElementById('menu');
+  const menuBtn = document.getElementById('menuBtn');
+  const modal = document.getElementById('modal');
+  const sheetInvite = document.getElementById('sheetInvite');
+  const sheetLeave = document.getElementById('sheetLeave');
+  const closeMenu = () => { menu.hidden = true; };
+  menuBtn.addEventListener('click', e => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  document.addEventListener('click', e => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); });
+  const openSheet = which => { modal.hidden = false; sheetInvite.hidden = which !== 'invite'; sheetLeave.hidden = which !== 'leave'; };
+  const closeModal = () => { modal.hidden = true; };
+  document.getElementById('menuInvite').addEventListener('click', () => { closeMenu(); openSheet('invite'); buildQR(); });
+  document.getElementById('menuLeave').addEventListener('click', () => { closeMenu(); openSheet('leave'); });
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+  function buildQR() {
+    const host = document.getElementById('qr');
+    if (host.dataset.done) return;
+    const n = 25, cell = 6, size = n*cell, NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS,'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    const rect = (x,y,w,h,f) => { const r=document.createElementNS(NS,'rect');
+      r.setAttribute('x',x*cell); r.setAttribute('y',y*cell);
+      r.setAttribute('width',w*cell); r.setAttribute('height',h*cell); r.setAttribute('fill',f); svg.appendChild(r); };
+    const finder = (fx,fy) => { rect(fx,fy,7,7,'#3a3226'); rect(fx+1,fy+1,5,5,'#fffdf7'); rect(fx+2,fy+2,3,3,'#3a3226'); };
+    let seed = 20261103; const rnd = () => { seed = (seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; };
+    for (let y=0;y<n;y++) for (let x=0;x<n;x++) {
+      const inF = (x<8&&y<8)||(x>n-9&&y<8)||(x<8&&y>n-9);
+      if (!inF && rnd()>0.52) rect(x,y,1,1,'#3a3226');
+    }
+    finder(0,0); finder(n-7,0); finder(0,n-7);
+    host.appendChild(svg); host.dataset.done = '1';
+  }
+})();
+</script>
+</body>
+</html>

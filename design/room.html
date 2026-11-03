@@ -1,0 +1,664 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭个话 · 少块 · 吉卜力</title>
+<style>
+  :root{
+    --cream:#f4e4bc;
+    --paper:#faf5eb;
+    --sage:#7cb9a8;
+    --sage-soft:#e3efea;
+    --coral:#e8a87c;
+    --sun:#e8c07a;
+    --ink:#3a3226;
+    --ink-2:#5a4f42;
+    --muted:#7c6b58;
+    --line:rgba(139,115,85,.22);
+    --line-soft:rgba(139,115,85,.14);
+    --shadow-s:0 2px 8px rgba(124,185,168,.15);
+    --shadow-m:0 4px 16px rgba(124,185,168,.2);
+    --shadow-h:0 10px 28px rgba(124,185,168,.3);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:linear-gradient(180deg,#b9e0d8 0%, #dfe6c6 34%, #f7e3bf 66%, #f0d3a2 100%);
+    color:var(--ink);
+    font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:15px;line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .sky{position:fixed;inset:0;z-index:0;pointer-events:none;filter:blur(16px);opacity:.75}
+  .sky::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(260px 100px at 10% 5%, rgba(255,255,255,.9), transparent 72%),
+      radial-gradient(320px 110px at 44% -3%, rgba(255,255,255,.75), transparent 70%),
+      radial-gradient(280px 100px at 84% 2%, rgba(255,255,255,.8), transparent 72%),
+      radial-gradient(170px 170px at 90% -6%, rgba(240,178,96,.7), transparent 70%);
+  }
+  .sky::after{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:40%;
+    background:radial-gradient(900px 280px at 26% 100%, rgba(124,185,168,.32), transparent 72%);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.55;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");
+  }
+  .app{position:relative;z-index:2;height:100vh;display:flex;flex-direction:column;max-width:1440px;margin:0 auto}
+
+  /* header */
+  .top{display:flex;align-items:center;gap:16px;height:80px;padding:0 32px}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand .leaf{width:16px;height:16px;background:var(--sage);border-radius:60% 40% 55% 45% / 50% 60% 40% 50%;
+               box-shadow:inset -2px -2px 0 rgba(90,74,58,.15)}
+  .brand .name{font-size:21px;font-weight:700;letter-spacing:.03em}
+  .room-meta{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink-2)}
+  .room-meta .who{color:var(--ink);font-weight:600}
+  .chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--ink-2);
+        background:rgba(250,245,235,.65)}
+  .dots{display:flex;align-items:center;gap:5px}
+  .dots i{width:6px;height:6px;border-radius:50%;background:var(--sage);display:block}
+  .top .spacer{flex:1}
+
+  [data-p="lin"]{--c1:#4f8f82;--c2:#e4f0ea;--c3:#2f5f56}
+  [data-p="zhou"]{--c1:#4e9aa6;--c2:#e2eff1;--c3:#2c5b64}
+  [data-p="lan"]{--c1:#b16f84;--c2:#f5e6ea;--c3:#6d3b4a}
+  [data-p="chen"]{--c1:#c07f50;--c2:#f6e9db;--c3:#74492a}
+  [data-p="mi"]{--c1:#cfa152;--c2:#f8eed7;--c3:#7a5a20}
+
+  .btn{font:inherit;font-size:13px;font-weight:500;color:#2f6459;background:rgba(250,245,235,.9);
+       border:1.5px solid rgba(96,166,150,.7);border-radius:16px;padding:8px 16px;
+       display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+       transition:all .5s ease-in-out;box-shadow:var(--shadow-s)}
+  .btn:hover{background:#fffdf7;box-shadow:var(--shadow-m);transform:translateY(-1px)}
+  .btn:active{transform:scale(.98)}
+  .btn.round{width:38px;height:38px;padding:0;justify-content:center}
+
+  /* 只有三块 */
+  .grid{
+    flex:1;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr) 392px;
+    grid-template-rows:minmax(0,1fr);
+    gap:20px;padding:0 32px 28px;
+  }
+  .card{
+    position:relative;background:var(--paper);border:1px solid var(--line-soft);
+    box-shadow:var(--shadow-s);min-width:0;display:flex;flex-direction:column;
+    border-radius:36px 42px 34px 40px;
+    transition:transform .5s ease-in-out, box-shadow .5s ease-in-out, border-color .5s ease-in-out;
+  }
+  .card:hover{transform:translateY(-3px) scale(1.004) rotate(-.12deg);
+              box-shadow:var(--shadow-h);border-color:rgba(124,185,168,.45)}
+
+  /* 话题 */
+  .topic{grid-column:1;grid-row:1;padding:24px 30px;border-radius:40px 34px 44px 32px;
+         background:linear-gradient(160deg,#fdf8ec 0%,#f9eed6 58%,#f6e4c2 100%)}
+  .topic .row1{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted)}
+  .topic .row1 .n{color:#8a5f3d;font-weight:600}
+  .topic h1{font-size:31px;line-height:1.32;font-weight:700;letter-spacing:-.01em;color:#3a3226;margin:8px 0 0}
+  .topic h1 .u{position:relative;display:inline-block}
+  .topic h1 svg{position:absolute;left:1px;bottom:-7px;width:100%;height:10px;overflow:visible}
+  .topic .desc{font-size:13.5px;color:var(--ink-2);margin-top:10px;max-width:74ch}
+  .topic .foot{margin-top:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);padding-top:12px}
+  .topic .foot .btn{margin-left:auto}
+  .topic .cloud{position:absolute;right:34px;top:22px;width:104px;opacity:.55;pointer-events:none}
+
+  /* 聊天 */
+  .chat{grid-column:1;grid-row:1;padding:22px 26px 18px;border-radius:34px 40px 32px 42px;min-height:0}
+  .chat .head{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1.5px solid rgba(139,115,85,.14)}
+  .chat .head .t{font-size:16px;font-weight:700}
+  .chat .head .s{font-size:12px;color:var(--muted)}
+  .chat .head .topic-chip{font-size:12px;color:var(--ink-2);background:rgba(255,253,247,.72);
+    border:1px solid var(--line-soft);border-radius:999px;padding:3px 12px;max-width:300px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chat .head .ai-state{margin-left:auto;display:flex;align-items:center;gap:7px;font-size:12px;color:#42645a;
+                         background:rgba(124,185,168,.16);border:1px solid rgba(124,185,168,.35);
+                         border-radius:999px;padding:4px 12px}
+  .chat .head .ai-state i{width:6px;height:6px;border-radius:50%;background:var(--sage);
+                          box-shadow:0 0 0 3px rgba(124,185,168,.25);display:block}
+  .chat .head .time{font-size:12px;color:var(--muted)}
+
+  .feed{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:9px;padding:10px 2px 0}
+  .sys{align-self:center;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
+  .sys i{width:5px;height:5px;border-radius:50%;background:var(--coral);display:block}
+
+  .msg{display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px;align-items:flex-start}
+  .msg .av{width:36px;height:36px;display:grid;place-items:center;font-size:13px;
+           color:var(--c3,var(--ink-2));background:var(--c2,#f2ead8);border:1.5px solid var(--c1,rgba(139,115,85,.18));
+           border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .msg .body{justify-self:start;max-width:64ch;background:var(--c2,rgba(255,253,247,.78));
+             border:1px solid color-mix(in srgb, var(--c1,#7cb9a8) 26%, transparent);border-radius:22px 22px 22px 8px;
+             padding:6px 13px 7px;box-shadow:0 1px 4px rgba(124,185,168,.1)}
+  .msg .who{display:flex;align-items:baseline;gap:8px}
+  .msg .who .name{font-size:13px;font-weight:600;color:var(--c3,var(--ink))}
+  .msg .who .time{font-size:11.5px;color:var(--muted)}
+  .msg p{font-size:14px;line-height:1.6;color:#443a2d;margin-top:1px}
+
+  .msg.ai{grid-template-columns:minmax(0,1fr)}
+  .msg.ai .body{justify-self:start;max-width:70ch;background:#fffdf7;
+                border:1.5px dashed rgba(95,165,147,.6);border-radius:22px 22px 8px 22px;padding:10px 16px 11px;
+                box-shadow:0 3px 12px rgba(124,185,168,.18)}
+  .msg.ai .who .badge{font-size:10.5px;letter-spacing:.08em;color:#33524a;background:rgba(124,185,168,.45);
+                      border-radius:999px;padding:1px 8px;font-weight:700}
+  .msg.ai .who .meta{font-size:11.5px;color:#5b7a70}
+  .msg.ai p{color:#314a43;font-size:15px}
+  .caret{display:inline-block;width:2px;height:15px;background:var(--sage);vertical-align:-2px;margin-left:2px;
+         animation:blink 1.6s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:.2}50%{opacity:.85}}
+
+  .composer{position:relative;padding-top:12px}
+  .composer .bar{display:flex;align-items:center;gap:10px}
+  .pill-ai{font:inherit;font-size:12px;font-weight:600;color:#3f6156;background:rgba(124,185,168,.2);
+           border:1.5px solid rgba(124,185,168,.55);border-radius:14px;padding:8px 13px;cursor:pointer;
+           transition:all .4s ease-in-out}
+  .pill-ai:hover{background:rgba(124,185,168,.34)}
+  .composer input{flex:1;min-width:0;font:inherit;font-size:14px;color:#5a4a3a;background:var(--paper);
+                  border:2px solid rgba(139,115,85,.3);border-radius:16px;padding:9px 16px;outline:none;
+                  transition:box-shadow .4s ease-in-out, border-color .4s ease-in-out}
+  .composer input::placeholder{color:#a4947f}
+  .composer input:focus{border-color:rgba(124,185,168,.7);box-shadow:0 0 12px rgba(139,115,85,.2)}
+  .send{font:inherit;font-size:13px;font-weight:600;color:#fff;background:#5fa593;border:none;
+        border-radius:16px;padding:10px 20px;cursor:pointer;transition:all .4s ease-in-out;box-shadow:var(--shadow-s)}
+  .send:hover{background:#6aa997;box-shadow:var(--shadow-m)}
+  .send:active{transform:scale(.98)}
+  .hint{display:flex;gap:14px;margin-top:9px;font-size:11.5px;color:var(--muted)}
+
+  /* 右侧：一块，内部分段 */
+  .side{grid-column:2;grid-row:1;padding:24px 22px;border-radius:32px 40px 36px 34px}
+  .blk-h{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:12px}
+  .blk-h b{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:0}
+  .blk-h .live{margin-left:auto;display:flex;align-items:center;gap:6px;color:#3f6156;font-size:12px}
+  .blk-h .live i{width:6px;height:6px;border-radius:50%;background:var(--sage);
+                 box-shadow:0 0 0 3px rgba(124,185,168,.25);display:block}
+  .hr{height:1px;background:rgba(139,115,85,.16);margin:12px 0}
+
+.seat-list{list-style:none;display:flex;flex-direction:column;gap:6px}
+  .seat-card{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:18px;
+             background:var(--paper);border:1.5px solid color-mix(in srgb, var(--c1) 26%, transparent);
+             cursor:pointer;transition:transform .45s ease-in-out, box-shadow .45s ease-in-out, border-color .45s ease-in-out}
+  .seat-card:hover{transform:translateY(-2px);box-shadow:0 8px 18px color-mix(in srgb, var(--c1) 20%, transparent)}
+  .seat-card.host{background:var(--c2)}
+  .seat-card .av{width:32px;height:32px;display:grid;place-items:center;font-size:12.5px;flex:none;
+                 background:var(--c2);border:1.5px solid var(--c1);color:var(--c3);
+                 border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .seat-card .meta{min-width:0;flex:1}
+  .seat-card .line1{display:flex;align-items:center;gap:7px}
+  .seat-card .line1 b{font-size:13.5px;font-weight:600;color:var(--c3)}
+  .host-tag{font-size:10px;color:#fff;background:var(--c1);border-radius:999px;padding:1px 7px;font-weight:600;letter-spacing:.04em}
+  .seat-card .tags{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+  .seat-card .tags span{font-size:11px;color:var(--c3);background:color-mix(in srgb, var(--c1) 12%, #fff);
+                        border:1px solid color-mix(in srgb, var(--c1) 30%, transparent);
+                        border-radius:999px;padding:1px 8px;line-height:1.6}
+  .seat-card .st{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;flex:none}
+  .seat-card .st i{width:6px;height:6px;border-radius:50%;background:var(--c1);display:block}
+  .seat-card.off{border-style:dashed;background:transparent}
+  .seat-card.off .av{background:transparent;border-style:dashed;color:var(--muted)}
+  .seat-card.off .st{color:var(--coral)}
+  .seat-card.off .st i{background:transparent;border:1.5px solid var(--coral)}
+  .seat-card.speaking{transform:translateY(-4px) scale(1.015);
+                      box-shadow:0 12px 24px color-mix(in srgb, var(--c1) 28%, transparent)}
+
+  .ai-big{font-size:16px;line-height:1.4;font-weight:700;color:#33524a}
+  .ai-sub{font-size:12.5px;color:#5b7a70;margin-top:3px}
+  .queue{margin-top:8px;display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#42645a;
+         background:rgba(124,185,168,.16);border-radius:999px;padding:5px 12px;align-self:flex-start}
+  .note{font-size:12px;line-height:1.75;color:var(--muted);margin-top:12px}
+
+  .kv{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);padding:3px 0}
+  .kv b{color:var(--ink);font-weight:600}
+  .link{display:flex;align-items:center;gap:8px;margin-top:12px;background:#f2ead8;border:1.5px solid rgba(139,115,85,.2);
+        border-radius:14px;padding:8px 11px;font-family:ui-monospace,"Cascadia Mono",monospace;font-size:11px;
+        color:var(--muted);overflow:hidden;white-space:nowrap}
+  .link span{overflow:hidden;text-overflow:ellipsis}
+  .row2{display:flex;gap:8px;margin-top:10px}
+  .row2 .btn{flex:1;justify-content:center;font-size:12px;padding:7px 8px}
+  .side .note-tail{margin-top:auto;font-size:11.5px;line-height:1.7;color:var(--muted);
+                   border-top:1.5px dashed rgba(139,115,85,.22);padding-top:12px}
+
+  /* flying bubble */
+  .bubble{position:fixed;z-index:40;pointer-events:none;left:0;top:0;display:flex;align-items:center;gap:9px;
+          padding:9px 16px 9px 10px;background:#fffdf7;border:1.5px solid rgba(124,185,168,.55);
+          border-radius:24px;box-shadow:0 10px 26px rgba(124,185,168,.35);
+          font-size:13.5px;line-height:1.5;color:var(--ink);max-width:300px;transform-origin:0 50%}
+  .bubble .av{width:26px;height:26px;display:grid;place-items:center;font-size:12px;flex:none;
+              background:#e3efea;border:1px solid rgba(124,185,168,.5);color:#33524a;
+              border-radius:52% 48% 45% 55% / 48% 52% 48% 52%}
+  .bubble[data-p]{border-color:color-mix(in srgb, var(--c1) 62%, transparent);
+                   box-shadow:0 12px 26px color-mix(in srgb, var(--c1) 28%, transparent)}
+  .bubble[data-p] .av{background:var(--c2);border-color:var(--c1);color:var(--c3)}
+  .bubble.mine{background:var(--sage);color:#fff;border-color:#6aa997}
+  .bubble.mine .av{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.45);color:#fff}
+  .bubble.tail-up::after{content:"";position:absolute;left:var(--tail-x,44px);top:-8px;width:0;height:0;
+    border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:9px solid #fffdf7}
+
+
+  /* 顶部菜单 */
+  .menu-wrap{position:relative}
+  .menu{position:absolute;right:0;top:calc(100% + 12px);width:196px;background:var(--paper);
+        border:1.5px solid rgba(139,115,85,.26);border-radius:18px;padding:6px;z-index:40;
+        box-shadow:0 18px 34px rgba(92,64,51,.18);animation:pop .28s ease-out}
+  .menu button{display:block;width:100%;text-align:left;font:inherit;font-size:13px;color:var(--ink-2);
+        background:transparent;border:none;border-radius:12px;padding:9px 12px;cursor:pointer;
+        transition:background-color .3s ease}
+  .menu button:hover{background:rgba(124,185,168,.16)}
+  .menu button.danger{color:#a05d41}
+  @keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+  /* 输入 @ 唤起 */
+  .mention-pop{position:absolute;left:0;bottom:64px;z-index:20}
+  .mention-pop[hidden]{display:none}
+  .mention-pop button{display:flex;align-items:baseline;gap:8px;text-align:left;font:inherit;
+        background:var(--paper);border:1.5px solid rgba(139,115,85,.26);border-radius:16px;
+        padding:8px 14px;cursor:pointer;box-shadow:0 14px 26px rgba(92,64,51,.16)}
+  .mention-pop b{font-size:13px;color:#3f6156}
+  .mention-pop span{font-size:11.5px;color:var(--muted)}
+
+  /* 弹窗 */
+  .modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;
+         background:rgba(58,50,38,.26);backdrop-filter:blur(4px)}
+  .modal[hidden]{display:none}
+  .sheet{width:372px;background:var(--paper);border:1.5px solid rgba(139,115,85,.26);
+         border-radius:30px;padding:26px 24px 22px;text-align:center;
+         box-shadow:0 30px 60px -24px rgba(92,64,51,.5);animation:pop .3s ease-out}
+  .sheet[hidden]{display:none}
+  .sheet h3{font-size:17px;font-weight:700;color:#33291d}
+  .sheet p{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .qr{width:190px;height:190px;margin:16px auto 14px;background:#fffdf7;border-radius:18px;
+      padding:10px;border:1px solid rgba(139,115,85,.16)}
+  .qr svg{width:100%;height:100%;display:block}
+  .sheet .link-row{display:flex;align-items:center;gap:8px;background:#f2ead8;
+      border:1px solid rgba(139,115,85,.16);border-radius:12px;padding:8px 10px;
+      font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);margin-top:6px}
+  .sheet .link-row span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+  .sheet .actions{display:flex;gap:9px;margin-top:16px}
+  .sheet .actions .btn{flex:1;justify-content:center}
+  .sheet .actions .btn.solid{background:#5fa593;border-color:#5fa593;color:#fff}
+
+  .side-foot{margin-top:auto;font-size:11.5px;color:var(--muted);
+             border-top:1.5px dashed rgba(139,115,85,.22);padding-top:12px}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+    .card:hover{transform:none}
+    .face:hover .av{transform:none}
+  }
+</style>
+</head>
+<body>
+<div class="sky"></div>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="leaf"></span><span class="name">搭个话</span></div>
+    <div class="room-meta">
+      <span class="who">小林 的房间</span>
+      <span class="chip">5 / 5</span>
+      <span class="dots"><i></i>4 人在线</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="menu-wrap">
+      <button class="btn round" id="menuBtn" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <div class="menu" id="menu" hidden>
+        <button type="button" id="menuInvite">邀请</button>
+        <button type="button" id="menuLeave" class="danger">退出房间</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- 2. 聊天 -->
+    <section class="card chat">
+      <div class="head"><span class="t">聊天</span></div>
+      <div class="feed" id="feed">
+        <div class="sys"><i></i>老陈 暂时掉线，60 秒内回来还坐原位</div>
+
+        <div class="msg" data-p="lin">
+          <div class="av">林</div>
+          <div class="body">
+            <div class="who"><span class="name">小林</span><span class="time">21:41</span></div>
+            <p>大家平时周末都怎么过？我最近有点两点一线。</p>
+          </div>
+        </div>
+
+        <div class="msg" data-p="zhou">
+          <div class="av">周</div>
+          <div class="body">
+            <div class="who"><span class="name">小周</span><span class="time">21:42</span></div>
+            <p>我一般会出门拍点东西，最近在学扫街，拍废一堆。</p>
+          </div>
+        </div>
+
+        <div class="msg" data-p="lan">
+          <div class="av">岚</div>
+          <div class="body">
+            <div class="who"><span class="name">阿岚</span><span class="time">21:43</span></div>
+            <p>周末基本泡在咖啡店，写点东西，顺便观察别人点的什么。</p>
+          </div>
+        </div>
+
+        <div class="msg" data-p="mi">
+          <div class="av">米</div>
+          <div class="body">
+            <div class="who"><span class="name">米米</span><span class="time">21:44</span></div>
+            <p>我在家烤东西，烤箱一开就是一下午。</p>
+          </div>
+        </div>
+
+        <div class="msg" data-p="lin">
+          <div class="av">林</div>
+          <div class="body">
+            <div class="who"><span class="name">小林</span><span class="time">21:45</span></div>
+            <p>@AI 帮我们找一个更好聊的话题</p>
+          </div>
+        </div>
+
+        <div class="msg ai">
+          <div class="body">
+            <div class="who"><span class="badge">AI</span><span class="name">导播</span><span class="meta">回应 小林</span><span class="time">21:46</span></div>
+            <p>最近大家看过什么好电影？<span class="caret"></span></p>
+          </div>
+        </div>
+
+        <div class="msg" data-p="zhou">
+          <div class="av">周</div>
+          <div class="body">
+            <div class="who"><span class="name">小周</span><span class="time">21:46</span></div>
+            <p>这话题好，我先说：上周看了《周处除三害》，后劲有点大。</p>
+          </div>
+        </div>
+
+              <div class="msg" data-p="mi">
+          <div class="av">米</div>
+          <div class="body">
+            <div class="who"><span class="name">米米</span><span class="time">21:47</span></div>
+            <p>那我也补一个：最近在重看《海街日记》。</p>
+          </div>
+        </div>
+</div>
+      <div class="composer">
+        <div class="mention-pop" id="mentionPop" hidden>
+          <button type="button" id="mentionAi"><b>AI 导播</b><span>让导播接一句</span></button>
+        </div>
+        <div class="bar">
+          <input id="input" placeholder="说点什么，输入 @ 可以让导播接一句" autocomplete="off" />
+          <button class="send" id="send">发送</button>
+        </div>
+        <div class="hint"><span>仅房主可以调用 AI</span><span>Enter 发送 · Shift + Enter 换行</span></div>
+      </div>
+    </section>
+
+    <!-- 3. 右侧：一块，三段 -->
+    <aside class="card side">
+      <div class="blk-h"><b>一桌五人</b><span class="chip">5 / 5</span></div>
+
+      <ul class="seat-list">
+        <li class="seat-card host" data-p="lin" data-seat="me">
+          <div class="av">林</div>
+          <div class="meta">
+            <div class="line1"><b>小林</b><span class="host-tag">房主</span></div>
+            <div class="tags"><span>阅读</span><span>电影</span></div>
+          </div>
+          <span class="st">在线<i></i></span>
+        </li>
+        <li class="seat-card" data-p="zhou" data-seat="zhou">
+          <div class="av">周</div>
+          <div class="meta">
+            <div class="line1"><b>小周</b></div>
+            <div class="tags"><span>旅行</span><span>扫街</span></div>
+          </div>
+          <span class="st">在线<i></i></span>
+        </li>
+        <li class="seat-card" data-p="lan" data-seat="lan">
+          <div class="av">岚</div>
+          <div class="meta">
+            <div class="line1"><b>阿岚</b></div>
+            <div class="tags"><span>摄影</span><span>咖啡</span></div>
+          </div>
+          <span class="st">在线<i></i></span>
+        </li>
+        <li class="seat-card off" data-p="chen" data-seat="chen">
+          <div class="av">陈</div>
+          <div class="meta">
+            <div class="line1"><b>老陈</b></div>
+            <div class="tags"><span>游戏</span><span>足球</span></div>
+          </div>
+          <span class="st">0:46<i></i></span>
+        </li>
+        <li class="seat-card" data-p="mi" data-seat="mi">
+          <div class="av">米</div>
+          <div class="meta">
+            <div class="line1"><b>米米</b></div>
+            <div class="tags"><span>烘焙</span><span>猫</span></div>
+          </div>
+          <span class="st">在线<i></i></span>
+        </li>
+      </ul>
+
+      <div class="hr"></div>
+
+      <div class="blk-h"><b>AI 导播</b><span class="live"><i></i>正在生成</span></div>
+      <div class="ai-big">回应 小林，正在换话题</div>
+      <div class="queue">后面还有 1 项 · 阿岚</div>
+
+      <div class="hr"></div>
+
+      <div class="blk-h"><b>房间</b></div>
+      <div class="kv"><span>开始于</span><b>21:32</b></div>
+      <div class="kv"><span>名额</span><b>5 人 · 已满</b></div>
+      <div class="side-foot">关房后，聊天与成员资料不再保留。</div>
+    </aside>
+  </main>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet" id="sheetInvite">
+    <h3>邀请朋友进来</h3>
+    <p>扫一下，或者把链接发给他</p>
+    <div class="qr" id="qr"></div>
+    <div class="link-row"><span>talk-together.app/join/room_demo?inviteCode=ff3a…</span></div>
+    <div class="actions">
+      <button class="btn" data-close>关闭</button>
+      <button class="btn solid" id="copyBtn">复制链接</button>
+    </div>
+  </div>
+  <div class="sheet" id="sheetLeave" hidden>
+    <h3>要退出这个房间吗？</h3>
+    <p>座位会让出来，这次入房的聊天也不会保留。</p>
+    <div class="actions">
+      <button class="btn" data-close>再想想</button>
+      <button class="btn solid" id="leaveBtn">退出房间</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const seatEls = new Map();
+  document.querySelectorAll('.seat-card[data-seat]').forEach(el => seatEls.set(el.dataset.seat, el));
+  const feed = document.getElementById('feed');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const still = new URLSearchParams(location.search).get('still') === '1';
+
+  const PEOPLE = {
+    me:   { name: '小林', initial: '林', mine: true, p: 'lin' },
+    zhou: { name: '小周', initial: '周', p: 'zhou' },
+    lan:  { name: '阿岚', initial: '岚', p: 'lan' },
+    mi:   { name: '米米', initial: '米', p: 'mi' },
+    chen: { name: '老陈', initial: '陈', p: 'chen' },
+  };
+
+  const qpoint = (a, c, b, t) => {
+    const u = 1 - t;
+    return { x: u*u*a.x + 2*u*t*c.x + t*t*b.x, y: u*u*a.y + 2*u*t*c.y + t*t*b.y };
+  };
+
+  function fly(seatEl, person, text) {
+    const row = document.createElement('div');
+    row.className = 'msg';
+    row.style.visibility = 'hidden';
+    row.innerHTML = `<div class="av">${person.initial}</div><div class="body">
+        <div class="who"><span class="name">${person.name}</span><span class="time">21:47</span></div><p></p></div>`;
+    row.querySelector('p').textContent = text;
+    feed.appendChild(row);
+
+    const a0 = seatEl.querySelector('.av').getBoundingClientRect();
+    const b0 = row.getBoundingClientRect();
+    const a = { x: a0.left + a0.width / 2 - 54, y: a0.top + a0.height / 2 - 16 };
+    const b = { x: b0.left + 46, y: b0.top + 16 };
+    const c = { x: (a.x + b.x) / 2 + 40, y: Math.max(a.y, b.y) - 150 };
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble' + (person.mine ? ' mine' : '');
+    bubble.innerHTML = `<span class="av">${person.initial}</span><span class="txt"></span>`;
+    bubble.querySelector('.txt').textContent = text;
+    bubble.style.left = a.x + 'px';
+    bubble.style.top = a.y + 'px';
+    document.body.appendChild(bubble);
+
+    const frames = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      const p = qpoint(a, c, b, t);
+      frames.push({
+        transform: `translate(${p.x - a.x}px, ${p.y - a.y}px) scale(${1.02 - 0.3 * t}) rotate(${(-1 + 2 * t) * 1.2}deg)`,
+        opacity: t > 0.9 ? String(1 - (t - 0.9) * 8) : '1',
+      });
+    }
+    const anim = bubble.animate(frames, { duration: 680, easing: 'cubic-bezier(.45,.05,.55,.95)', fill: 'forwards' });
+    anim.onfinish = () => {
+      bubble.remove();
+      row.style.visibility = 'visible';
+      seatEl.classList.add('speaking');
+      setTimeout(() => seatEl.classList.remove('speaking'), 1100);
+      row.scrollIntoView({ block: 'nearest' });
+    };
+    if (reduce) anim.finish();
+  }
+
+  const send = () => {
+    const t = input.value.trim();
+    if (!t) return;
+    input.value = '';
+    fly(seatEls.get('me'), PEOPLE.me, t);
+  };
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+  seatEls.forEach((el, key) => el.addEventListener('click', () => {
+    const p = PEOPLE[key];
+    if (p) fly(el, p, '（点座位示意：' + p.name + ' 发言）');
+  }));
+
+  // ---- 顶栏菜单 ----
+  const menuBtn = document.getElementById('menuBtn');
+  const menu = document.getElementById('menu');
+  const modal = document.getElementById('modal');
+  const sheetInvite = document.getElementById('sheetInvite');
+  const sheetLeave = document.getElementById('sheetLeave');
+
+  const closeMenu = () => { menu.hidden = true; menuBtn.setAttribute('aria-expanded', 'false'); };
+  const openMenu = () => { menu.hidden = false; menuBtn.setAttribute('aria-expanded', 'true'); };
+
+  menuBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    menu.hidden ? openMenu() : closeMenu();
+  });
+  document.addEventListener('click', e => {
+    if (!menu.hidden && !menu.contains(e.target) && e.target !== menuBtn) closeMenu();
+  });
+
+  const closeModal = () => { modal.hidden = true; };
+  const openSheet = which => {
+    modal.hidden = false;
+    sheetInvite.hidden = which !== 'invite';
+    sheetLeave.hidden = which !== 'leave';
+  };
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeMenu(); } });
+
+  document.getElementById('menuInvite').addEventListener('click', () => { closeMenu(); openSheet('invite'); buildQR(); });
+  document.getElementById('menuLeave').addEventListener('click', () => { closeMenu(); openSheet('leave'); });
+  document.getElementById('leaveBtn').addEventListener('click', closeModal);
+
+  const copyBtn = document.getElementById('copyBtn');
+  copyBtn.addEventListener('click', async () => {
+    const url = 'https://talk-together.app/join/room_demo?inviteCode=ff3a0000000000000000';
+    try { await navigator.clipboard.writeText(url); } catch (err) {}
+    copyBtn.textContent = '已复制';
+    setTimeout(() => { copyBtn.textContent = '复制链接'; }, 1600);
+  });
+
+  // 画一个占位二维码
+  function buildQR() {
+    const host = document.getElementById('qr');
+    if (host.dataset.done === '1') return;
+    const n = 25, cell = 6, size = n * cell;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+    svg.setAttribute('shape-rendering', 'crispEdges');
+    const rect = (x, y, w, h, fill) => {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('x', x * cell); r.setAttribute('y', y * cell);
+      r.setAttribute('width', w * cell); r.setAttribute('height', h * cell);
+      r.setAttribute('fill', fill); svg.appendChild(r);
+    };
+    const finder = (fx, fy) => {
+      rect(fx, fy, 7, 7, '#3a3226');
+      rect(fx + 1, fy + 1, 5, 5, '#fffdf7');
+      rect(fx + 2, fy + 2, 3, 3, '#3a3226');
+    };
+    let seed = 20261103;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const inFinder = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+        if (inFinder) continue;
+        if (rnd() > 0.52) rect(x, y, 1, 1, '#3a3226');
+      }
+    }
+    finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
+    host.appendChild(svg);
+    host.dataset.done = '1';
+  }
+
+  // 输入 @ 唤起导播
+  const mentionPop = document.getElementById('mentionPop');
+  const mentionAi = document.getElementById('mentionAi');
+  input.addEventListener('input', () => {
+    mentionPop.hidden = !input.value.endsWith('@');
+  });
+  mentionAi.addEventListener('click', () => {
+    input.value = input.value.replace(/@$/, '@AI ');
+    mentionPop.hidden = true;
+    input.focus();
+  });
+  document.addEventListener('click', e => {
+    if (!mentionPop.hidden && !mentionPop.contains(e.target) && e.target !== input) mentionPop.hidden = true;
+  });
+
+  if (new URLSearchParams(location.search).get('panel') === 'invite') { openSheet('invite'); buildQR(); }
+  if (new URLSearchParams(location.search).get('panel') === 'menu') { openMenu(); }
+  if (new URLSearchParams(location.search).get('panel') === 'mention') { input.value = '@'; mentionPop.hidden = false; }
+  if (still) {
+    const seat = seatEls.get('lan');
+    const a0 = seat.querySelector('.av').getBoundingClientRect();
+    const chatRect = document.querySelector('.chat').getBoundingClientRect();
+    const ax = chatRect.right - 620;
+    const ay = chatRect.top + 120;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = `<span class="av">岚</span><span class="txt"></span>`;
+    bubble.querySelector('.txt').textContent = '周末基本泡在咖啡店，写点东西。';
+    bubble.setAttribute('data-p', 'lan');
+    bubble.style.left = ax + 'px';
+    bubble.style.top = ay + 'px';
+    bubble.style.transform = 'rotate(-1deg)';
+    document.body.appendChild(bubble);
+  }
+})();
+</script>
+</body>
+</html>

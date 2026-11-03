@@ -34,3 +34,13 @@ node_modules/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Frontend build output
+dist/
+.vite/
+
+# Harness scratch files
+.dsh-acl-reports/
+
+# TypeScript build info
+*.tsbuildinfo
