@@ -322,7 +322,7 @@ test('AI_QUEUE_FULL：AI 队列已满', async t => {
       url: `/api/v1/rooms/${host.roomId}/messages`,
       credential: host.credential,
       membershipId: host.membershipId,
-      body: { clientRequestId: uuid(), text, mentions: [{ type: 'ai' }] },
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
     });
 
   const results = [await send('@AI 一'), await send('@AI 二'), await send('@AI 三')];
@@ -343,7 +343,7 @@ test('AI_QUEUE_TIMEOUT：排队等待超时', async t => {
       url: `/api/v1/rooms/${host.roomId}/messages`,
       credential: host.credential,
       membershipId: host.membershipId,
-      body: { clientRequestId: uuid(), text, mentions: [{ type: 'ai' }] },
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
     });
 
   const service = (h.app as any).roomService;
@@ -382,7 +382,7 @@ test('AI_PROVIDER_ERROR：插件零文本输出', async t => {
     url: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: ['ai'] },
   });
   await new Promise(resolve => setTimeout(resolve, 150));
 
@@ -406,7 +406,7 @@ test('AI_CANCELLED：关房取消在途调用', async t => {
     url: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: ['ai'] },
   });
   await new Promise(resolve => setTimeout(resolve, 40));
   const runningId = room.running;

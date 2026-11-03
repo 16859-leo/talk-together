@@ -35,6 +35,10 @@ export interface MemberMessageRecord {
   membershipId: string;
   text: string;
   clientRequestId: string;
+  /** 本次提交是否携带 AI 提及；幂等比较须包含它，否则不同操作会被当成同一次重试。 */
+  mentionsAi: boolean;
+  /** 首次提交返回的 AI 回执原文；幂等命中时原样回放，不按当前状态重建。 */
+  receipt: unknown;
   createdAt: string;
   createdSequence: number;
 }

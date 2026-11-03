@@ -5,18 +5,39 @@ import { createStubCapability } from '../src/application/capability.ts';
 
 /** 冷场调度是纯函数式判定，用注入时间戳驱动，不依赖真实等待。 */
 const idleConfig = () =>
-  testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000, minMembers: 2 } });
+  testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } });
 
-test('房间人数不足时不自动补话', async t => {
+test('单人房间也可邀答房主（PRD 5.2 不设人数门槛）', async t => {
   const h = await harness(idleConfig());
   t.after(() => h.close());
 
   const host = await createHost(h);
   const service = (h.app as any).roomService;
   const ai = service.aiService(host.roomId);
+  const room = service.authenticate(host.roomId, host.credential).room;
 
-  // 只有房主一人，低于 minMembers。
-  assert.equal(ai.tickIdle(Date.now() + 600_000), null);
+  // 只有房主一人，且已有当前话题，持续冷场后应发起邀答。
+  for (const member of room.members.values()) {
+    if (member.membership) member.membership.presence = 'online';
+  }
+  room.currentTopic = {
+    id: 'topic_solo',
+    title: '热门话题',
+    content: '聊聊最近的热门话题',
+    kind: 'popular',
+    sourceLabel: null,
+    sourceUrl: null,
+    publishedAt: new Date().toISOString(),
+  };
+  const base = Date.now();
+  room.lastMemberMessageAt = base;
+  room.lastAutoAt = base;
+  room.invitedForCurrentTopic = false;
+
+  const fired = ai.tickIdle(base + 46_000);
+  assert.ok(fired, '单人房间持续冷场也应发起邀答');
+  assert.equal(fired.purpose, 'invitation');
+  assert.equal(fired.invitedMemberId, host.memberId, '目标应为房主本人');
 });
 
 test('冷场达到阈值先自动选题，且自动调用不带 caller', async t => {
@@ -167,7 +188,7 @@ test('AI 零文本输出落 failed 而非 completed', async t => {
     url: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: ['ai'] },
   });
   assert.equal(sent.status, 201);
 
@@ -192,7 +213,7 @@ test('AI 队列满时拒绝新调用但不影响聊天', async t => {
       url: `/api/v1/rooms/${host.roomId}/messages`,
       credential: host.credential,
       membershipId: host.membershipId,
-      body: { clientRequestId: uuid(), text, mentions: [{ type: 'ai' }] },
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
     });
 
   const results = [await send('@AI 一'), await send('@AI 二'), await send('@AI 三')];

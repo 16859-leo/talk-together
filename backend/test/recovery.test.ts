@@ -228,7 +228,7 @@ test('房主掉线期间已受理的 AI 调用继续完成', async t => {
     path: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: ['ai'] },
   });
   // 等回复开始后再让房主掉线。
   await sleep(120);
@@ -258,7 +258,7 @@ test('房主恢复超时关房：先取消剩余调用，再发 room.closed，re
     path: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: ['ai'] },
   });
   await sleep(250);
   hostClient.close();

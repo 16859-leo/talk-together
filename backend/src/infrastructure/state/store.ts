@@ -48,6 +48,8 @@ export interface RoomStateStore {
   // 引导凭证（首次提交幂等）
   getBootstrap(token: string): BootstrapRecord | undefined;
   putBootstrap(token: string, record: BootstrapRecord): void;
+  /** 关房时删除该房间的全部引导记录，避免资料原文长期驻留。 */
+  deleteBootstrapsByRoom(roomId: string): void;
 
   // 一次性连接票据
   getTicket(ticket: string): TicketRecord | undefined;
@@ -110,6 +112,12 @@ export class MemoryRoomStateStore implements RoomStateStore {
 
   putBootstrap(token: string, record: BootstrapRecord): void {
     this.bootstraps.set(token, record);
+  }
+
+  deleteBootstrapsByRoom(roomId: string): void {
+    for (const [token, record] of this.bootstraps) {
+      if (record.roomId === roomId) this.bootstraps.delete(token);
+    }
   }
 
   getTicket(ticket: string): TicketRecord | undefined {

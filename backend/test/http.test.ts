@@ -196,7 +196,7 @@ test('普通成员的 AI 提及按普通聊天处理', async t => {
     url: `/api/v1/rooms/${host.roomId}/messages`,
     credential: guest.data.memberCredential,
     membershipId: guest.data.member.membership.id,
-    body: { clientRequestId: uuid(), text: '@AI 来个话题', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 来个话题', mentions: ['ai'] },
   });
   assert.equal(ignored.status, 201);
   assert.equal(ignored.data.ai.status, 'ignored');

@@ -97,8 +97,8 @@ export class AiService {
     if (this.autoPaused || this.room.closed) return null;
     // 遇忙跳过：不入队，之后重新判断。
     if (this.room.running !== null || this.room.queue.length > 0) return null;
-    // 房间人太少时不自动补话。
-    if (activeMembers(this.room).length < this.config.idle.minMembers) return null;
+    // PRD 5.2 要求只有房主一人时也可发起随机邀答，因此不设人数门槛。
+    if (activeMembers(this.room).length === 0) return null;
 
     const silentFor = now - this.room.lastMemberMessageAt;
     if (silentFor < this.config.idle.topicMs) return null;
@@ -327,6 +327,8 @@ export class AiService {
     try {
       for await (const chunk of this.capability.run(this.buildContext(invocation, controller.signal))) {
         if (this.room.closed) break;
+        // 插件可能响应 AbortSignal 后正常结束迭代而不抛异常，因此每片都要检查。
+        if (controller.signal.aborted) break;
         if (chunk.kind === 'text') {
           reply.text += chunk.delta;
           reply.updatedAt = isoTime();
@@ -341,8 +343,16 @@ export class AiService {
         }
       }
       clearTimeout(runTimer);
-      // 契约要求 completed 的 text 为非空文本，零文本只能落到 failed。
-      if (reply.text.length === 0) {
+
+      // 流正常结束也可能是因为插件响应了取消；不能只靠 catch 判断。
+      if (controller.signal.aborted) {
+        const failure = toFailure(controller.signal.reason);
+        this.terminate(invocation, reply, failure.code === 'AI_CANCELLED' ? 'cancelled' : 'failed', failure);
+        return;
+      }
+
+      // 契约要求 completed 的 text 匹配 NonBlankText 的 \S，纯空白同样不能算成功。
+      if (!/\S/.test(reply.text)) {
         this.terminate(invocation, reply, 'failed', {
           code: 'AI_PROVIDER_ERROR',
           message: 'AI 没有产出内容',
@@ -351,7 +361,10 @@ export class AiService {
         return;
       }
       this.terminate(invocation, reply, 'completed', null);
-      if (topicDraft !== null) this.publishTopic(topicDraft);
+      // 只有选题调用的草稿才能生效；普通回复与邀答不改当前话题。
+      if (topicDraft !== null && invocation.purpose === 'topic') {
+        this.publishTopic(topicDraft);
+      }
     } catch (error) {
       clearTimeout(runTimer);
       const aborted = controller.signal.aborted;

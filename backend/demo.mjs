@@ -300,7 +300,7 @@ const main = async () => {
   const ignored = await call('POST', `/api/v1/rooms/${room.id}/messages`, {
     credential: guest.credential,
     membershipId: guest.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 帮我们找个话题', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 帮我们找个话题', mentions: ['ai'] },
     label: '（普通成员的结构化提及）',
   });
   good(`AI 回执=${ignored.data.ai.status}，文字照常发布`);
@@ -336,7 +336,7 @@ const main = async () => {
   const aiCall = await call('POST', `/api/v1/rooms/${room.id}/messages`, {
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 说点什么', mentions: ['ai'] },
     label: '（房主的结构化提及）',
   });
   good(`AI 回执=${aiCall.data.ai.status}，invocationId=${aiCall.data.ai.invocationId}`);
@@ -359,7 +359,7 @@ const main = async () => {
     const r = await call('POST', `/api/v1/rooms/${room.id}/messages`, {
       credential: host.credential,
       membershipId: host.membershipId,
-      body: { clientRequestId: uuid(), text, mentions: [{ type: 'ai' }] },
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
     });
     if (r.status !== 201) {
       warn(`该次提交未成功：${r.code}`);
@@ -394,7 +394,7 @@ const main = async () => {
   await call('POST', `/api/v1/rooms/${room.id}/messages`, {
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 这是机密内容', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 这是机密内容', mentions: ['ai'] },
   });
   await sleep(200);
   const hiddenStarted = hostWs.frames.filter(f => f.type === 'ai.reply.started').at(-1);
@@ -512,7 +512,7 @@ const main = async () => {
   await call('POST', `/api/v1/rooms/${room.id}/messages`, {
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: ['ai'] },
   });
   await sleep(250);
   info('此时回复正在生成中，关房必须先取消它');

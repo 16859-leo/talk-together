@@ -57,10 +57,15 @@ export class RoomBus {
     return { snapshot: this.snapshot(subscriber), firstConnection };
   }
 
-  /** 返回该 membership 是否已无连接。 */
+  /**
+   * 移除订阅。
+   *
+   * 返回值表示「该 membership 因本次移除而变为无连接」。
+   * 未知订阅或重复 detach 返回 false，避免迟到的关闭回调触发多余的离线转换。
+   */
   detach(subscriber: Subscriber): boolean {
     const set = this.subscribers.get(subscriber.membershipId);
-    if (!set) return true;
+    if (!set || !set.has(subscriber)) return false;
     set.delete(subscriber);
     if (set.size === 0) {
       this.subscribers.delete(subscriber.membershipId);

@@ -7,6 +7,35 @@ import { RoomService } from './application/room.ts';
 import type { Subscriber } from './application/bus.ts';
 import { createStubCapability, type Capability } from './application/capability.ts';
 import type { RoomStateStore } from './infrastructure/state/store.ts';
+import { validateRequest } from './transport/validate.ts';
+
+/** 请求体类型，字段与契约模型一致；运行时由 validateRequest 保证。 */
+interface ProfileBody {
+  nickname: string;
+  interestTags: string[];
+  bio?: string;
+}
+interface CreateRoomBody {
+  clientRequestId: string;
+  bootstrapToken: string;
+  profile: ProfileBody;
+}
+interface JoinRoomBody {
+  clientRequestId: string;
+  bootstrapToken?: string;
+  inviteCode: string;
+  profile: ProfileBody;
+}
+interface SendMessageBody {
+  clientRequestId: string;
+  text: string;
+  mentions?: string[];
+}
+interface ProfilePatchBody {
+  nickname?: string;
+  interestTags?: string[];
+  bio?: string;
+}
 
 /** 统一响应信封：code / message / data / requestId。 */
 const ok = (reply: FastifyReply, status: number, data: unknown, requestId: string): FastifyReply =>
@@ -100,12 +129,14 @@ export const build = async ({ config, capability, store }: BuildOptions): Promis
   app.get('/api/v1/client-config', (request, reply) => ok(reply, 200, service.clientConfig(), String(request.id)));
 
   app.post('/api/v1/rooms', (request, reply) => {
-    const result = service.createRoom(request.body as never);
+    const body = validateRequest<CreateRoomBody>('CreateRoomRequest', request.body);
+    const result = service.createRoom(body);
     return ok(reply, result.status, result.data, String(request.id));
   });
 
   app.post<{ Params: { roomId: string } }>('/api/v1/rooms/:roomId/members', (request, reply) => {
-    const result = service.joinRoom(request.params.roomId, bearer(request), request.body as never);
+    const body = validateRequest<JoinRoomBody>('JoinRoomRequest', request.body);
+    const result = service.joinRoom(request.params.roomId, bearer(request), body);
     return ok(reply, result.status, result.data, String(request.id));
   });
 
@@ -117,7 +148,12 @@ export const build = async ({ config, capability, store }: BuildOptions): Promis
     ok(
       reply,
       200,
-      service.updateSelf(request.params.roomId, bearer(request), membershipHeader(request), request.body as never),
+      service.updateSelf(
+        request.params.roomId,
+        bearer(request),
+        membershipHeader(request),
+        validateRequest<ProfilePatchBody>('ProfilePatch', request.body),
+      ),
       String(request.id),
     ),
   );
@@ -146,7 +182,7 @@ export const build = async ({ config, capability, store }: BuildOptions): Promis
       request.params.roomId,
       bearer(request),
       membershipHeader(request),
-      request.body as never,
+      validateRequest<SendMessageBody>('SendMessageRequest', request.body),
     );
     return ok(reply, result.status, result.data, String(request.id));
   });
@@ -194,9 +230,8 @@ export const build = async ({ config, capability, store }: BuildOptions): Promis
         },
       };
 
-      // 首个业务消息必须是快照，且与后续事件在同一观察位置衔接。
-      const snapshot = service.attach(identity, subscriber);
-      subscriber.send(snapshot);
+      // attach 内部已按正确顺序发送首帧快照，这里不再重复发送。
+      service.attach(identity, subscriber);
 
       socket.on('close', () => service.detach(identity, subscriber));
       socket.on('error', () => service.detach(identity, subscriber));

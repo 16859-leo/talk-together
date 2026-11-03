@@ -125,6 +125,12 @@ export class RoomService {
           fieldErrors.push({ path: `${prefix}/interestTags/${index}`, message: `单个标签不能超过 ${policy.interestTag.maxLength} 个字` });
         }
       });
+      // 归一化后可能出现重复（如 "travel" 与 " travel "），而公共模型要求
+      // uniqueItems，必须在此拦下，否则返回的资料会违反契约。
+      const normalized = tags.map(tag => tag.trim());
+      if (new Set(normalized).size !== normalized.length) {
+        fieldErrors.push({ path: `${prefix}/interestTags`, message: '兴趣标签不能重复' });
+      }
     }
 
     if (input.bio !== undefined && policy.bio.maxLength !== null && input.bio.length > policy.bio.maxLength) {
@@ -389,6 +395,8 @@ export class RoomService {
     room.replies.clear();
     room.invocations.clear();
     this.store.deleteInvite(room.inviteCode);
+    // 引导记录的 fingerprint 含资料原文，关房必须一并清理。
+    this.store.deleteBootstrapsByRoom(room.id);
     this.store.deleteRoom(room.id);
     this.buses.delete(room.id);
     this.ai.delete(room.id);
@@ -400,7 +408,7 @@ export class RoomService {
     roomId: string,
     credential: string | null,
     membershipId: string | null,
-    body: { clientRequestId: string; text: string; mentions?: { type: string }[] },
+    body: { clientRequestId: string; text: string; mentions?: string[] },
   ): { status: number; data: unknown } {
     const identity = this.requireMembership(roomId, credential, membershipId);
     const { room, member } = identity;
@@ -417,12 +425,17 @@ export class RoomService {
       if (previous.text !== body.text) {
         throw new AppError('IDEMPOTENCY_CONFLICT', '相同请求标识携带了不同内容');
       }
-      const existing = [...room.invocations.values()].find(item => item.clientRequestId === body.clientRequestId);
+      // 提及与否决定是否创建 AI 调用，属于提交语义的一部分，必须纳入比较。
+      const mentionsAi = (body.mentions ?? []).includes('ai');
+      if (previous.mentionsAi !== mentionsAi) {
+        throw new AppError('IDEMPOTENCY_CONFLICT', '相同请求标识携带了不同的 AI 提及');
+      }
+      // 契约要求返回原接收结果，因此回放首次保存的回执，不按当前调用状态重建。
       return {
         status: 201,
         data: {
           message: wireMessage(room, previous),
-          ai: this.aiService(roomId).receiptFor(existing),
+          ai: previous.receipt,
         },
       };
     }
@@ -446,6 +459,8 @@ export class RoomService {
       throw new AppError('MESSAGE_RATE_LIMITED', '发送过于频繁，请稍后再试', { retryAfterMs });
     }
 
+    // 契约的 mentions 是字符串数组（const "ai"），不是对象数组。
+    const mentionsAi = (body.mentions ?? []).includes('ai');
     const message = {
       kind: 'member' as const,
       id: newId('msg'),
@@ -453,6 +468,8 @@ export class RoomService {
       membershipId: member.membership!.id,
       text,
       clientRequestId: body.clientRequestId,
+      mentionsAi,
+      receipt: { status: 'not_requested' } as unknown,
       createdAt: isoTime(),
       createdSequence: nextSequence(room),
     };
@@ -466,13 +483,14 @@ export class RoomService {
       message.createdSequence,
     );
 
-    const mentionsAi = (body.mentions ?? []).some(mention => mention.type === 'ai');
     const ai = this.aiService(roomId).handleMention({
       mentionsAi,
       member,
       message,
       clientRequestId: body.clientRequestId,
     });
+    // 保存首次回执原文，供后续幂等重试原样回放。
+    message.receipt = ai;
 
     return { status: 201, data: { message: wireMessage(room, message), ai } };
   }
@@ -558,11 +576,29 @@ export class RoomService {
 
   // ---------------------------------------------------------------- 在线状态
 
-  /** 连接建立：原子拍快照并注册；首个连接把 presence 置为 online。 */
+  /**
+   * 连接建立。
+   *
+   * 顺序必须是：先更新状态 → 再注册订阅并立即发送快照 → 最后广播状态变更事件。
+   *
+   * 若先注册再改状态，markOnline 的广播会抢在快照之前到达，违反「首个业务消息是
+   * 快照」的契约；而且快照会带着尚未更新的 presence，被后续事件覆盖出错序。
+   */
   attach(identity: Identity, subscriber: Subscriber): unknown {
     const bus = this.bus(identity.room.id);
-    const { snapshot, firstConnection } = bus.attach(subscriber);
-    if (firstConnection) this.markOnline(identity);
+    const isFirst = bus.connectionCount(subscriber.membershipId) === 0;
+
+    // 第一步：状态先就位，这样快照里的 presence 已是 online。
+    const pending = isFirst ? this.applyOnline(identity) : [];
+
+    // 第二步：注册订阅并同步取回快照，由调用方立即发送。
+    const { snapshot } = bus.attach(subscriber);
+    subscriber.send(snapshot);
+
+    // 第三步：快照已送达，再广播状态变更，本连接收到的顺序才正确。
+    for (const event of pending) {
+      bus.publish(event.type, event.data);
+    }
     return snapshot;
   }
 
@@ -570,14 +606,20 @@ export class RoomService {
   detach(identity: Identity, subscriber: Subscriber): void {
     const bus = this.buses.get(identity.room.id);
     if (!bus) return;
+    // 旧入房的迟到关闭回调不得影响当前入房：先核对归属。
+    const current = identity.member.membership;
+    const stale = current === null || current.id !== subscriber.membershipId;
     const last = bus.detach(subscriber);
-    if (last) this.markOffline(identity);
+    if (last && !stale) this.markOffline(identity);
   }
 
-  private markOnline(identity: Identity): void {
+  /**
+   * 更新为在线并返回待广播的事件，由 attach 在发送快照之后再发布。
+   */
+  private applyOnline(identity: Identity): { type: string; data: Record<string, unknown> }[] {
     const { room, member } = identity;
     const membership = member.membership;
-    if (membership === null) return;
+    if (membership === null) return [];
     const timer = room.recoveryTimers.get(membership.id);
     if (timer) {
       clearTimeout(timer);
@@ -585,19 +627,29 @@ export class RoomService {
     }
     membership.presence = 'online';
     membership.recoveryExpiresAt = null;
-    const bus = this.bus(room.id);
-    bus.publish('member.presence.changed', {
-      memberId: member.id,
-      membershipId: membership.id,
-      presence: 'online',
-      recoveryExpiresAt: null,
-    });
+
+    const events: { type: string; data: Record<string, unknown> }[] = [
+      {
+        type: 'member.presence.changed',
+        data: {
+          memberId: member.id,
+          membershipId: membership.id,
+          presence: 'online',
+          recoveryExpiresAt: null,
+        },
+      },
+    ];
+
     if (member.role === 'host' && room.status === 'host_reconnecting') {
       room.status = 'open';
       room.hostRecoveryExpiresAt = null;
       this.aiService(room.id).setAutoPaused(false);
-      bus.publish('room.updated', { status: room.status, hostRecoveryExpiresAt: room.hostRecoveryExpiresAt });
+      events.push({
+        type: 'room.updated',
+        data: { status: room.status, hostRecoveryExpiresAt: room.hostRecoveryExpiresAt },
+      });
     }
+    return events;
   }
 
   private markOffline(identity: Identity): void {

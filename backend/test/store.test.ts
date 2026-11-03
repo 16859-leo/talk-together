@@ -27,6 +27,7 @@ const counting = (inner: RoomStateStore) => {
     deleteInvite: c => (bump('deleteInvite'), inner.deleteInvite(c)),
     getBootstrap: t => (bump('getBootstrap'), inner.getBootstrap(t)),
     putBootstrap: (t, r) => (bump('putBootstrap'), inner.putBootstrap(t, r)),
+    deleteBootstrapsByRoom: id => (bump('deleteBootstrapsByRoom'), inner.deleteBootstrapsByRoom(id)),
     getTicket: t => (bump('getTicket'), inner.getTicket(t)),
     putTicket: (t, r) => (bump('putTicket'), inner.putTicket(t, r)),
     deleteTicket: t => (bump('deleteTicket'), inner.deleteTicket(t)),

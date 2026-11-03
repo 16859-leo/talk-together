@@ -138,7 +138,7 @@ test('房主提及走完整流式生命周期并更新话题', async t => {
     path: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 来个话题', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 来个话题', mentions: ['ai'] },
   });
   assert.equal(sent.status, 201);
   assert.ok(['queued', 'running'].includes(sent.data.ai.status), JSON.stringify(sent.data.ai));
@@ -178,7 +178,7 @@ test('同房间 AI 严格串行，房主调用按 FIFO 执行', async t => {
       path: `/api/v1/rooms/${host.roomId}/messages`,
       credential: host.credential,
       membershipId: host.membershipId,
-      body: { clientRequestId: uuid(), text, mentions: [{ type: 'ai' }] },
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
     });
 
   const first = await send('@AI 第一次');
@@ -221,7 +221,7 @@ test('中途加入不接收入房前已开始的回复，但可见当前话题',
     path: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 开场', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 开场', mentions: ['ai'] },
   });
   const started = await hostClient.waitFor(frame => frame.type === 'ai.reply.started', 'started');
   const hiddenReplyId = started.data.reply.id as string;
@@ -293,7 +293,7 @@ test('关房先终结在途回复再发 room.closed，之后没有业务事件',
     path: `/api/v1/rooms/${host.roomId}/messages`,
     credential: host.credential,
     membershipId: host.membershipId,
-    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: [{ type: 'ai' }] },
+    body: { clientRequestId: uuid(), text: '@AI 慢慢说', mentions: ['ai'] },
   });
   await client.waitFor(frame => frame.type === 'ai.reply.delta', 'first delta');
 

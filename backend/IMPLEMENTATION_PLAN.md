@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 契约自检 | `npm run check --prefix contracts` | 通过：11 接口 / 49 模型 / 43 HTTP 样例 / 12 WS 场景 |
 | 类型检查 | `npx tsc --noEmit` | 通过（strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`） |
-| 后端测试 | `node --test test/*.test.ts` | **58 / 58 通过** |
+| 后端测试 | `node --test test/*.test.ts` | **82 / 82 通过** |
 | 错误码盘点 | `test/error-codes.test.ts` | 契约 29 个：**22 个有真实触发路径，7 个显式说明未覆盖原因，无遗漏** |
 
 本计划未修改契约任何字段。
@@ -232,7 +232,7 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 | 二级冷场（随机邀答） | 距上次自动补话 30 秒 | 已有话题仍冷场 → 随机邀答，每话题最多一次 |
 | 换话题 | 已邀答过且再冷场 45 秒 | 发起新一轮选题 |
 | 轮询间隔 | 5 秒 | 调度器 tick |
-| 最少在线成员 | 2 | 不足则不自动补话，避免对空房说话 |
+| 最少在线成员 | 无门槛 | PRD 5.2 要求单人房间也可邀答房主，不额外设人数限制 |
 
 三条附加规则：
 
@@ -273,7 +273,7 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 
 后端真实输出全部用 `contracts/models.schema.json` 与 `events.schema.json` 做 Draft 2020-12 校验，不自写一套断言。
 
-### 已通过（58 项）
+### 已通过（82 项）
 
 **身份与入房（11 项，`test/http.test.ts`）**
 
@@ -352,6 +352,11 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 
 注入一个带调用计数的装饰实现，跑完建房 → 入房 → 发消息 → 取票 → 关房全链路，断言业务行为不变且读写确实流经注入实现。这是"换持久化只改一个实现"的可执行证据，而非口头承诺。
 
+**review 回归（24 项，`test/review-p1.test.ts` / `review-snapshot.test.ts` / `review-p2.test.ts`）**
+
+PR #7 的 12 项 review 问题逐项对应失败路径用例，详见第 10 节。
+其中快照顺序三项已验证：临时还原旧逻辑后必然失败，修复后通过。
+
 ### 待补
 
 无。第 6 节原列的三项（房主掉线超时关房与恢复、旧入房重试 `IDEMPOTENCY_CONTEXT_EXPIRED`、错误码盘点）均已完成。
@@ -390,3 +395,44 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 对 2 号的描述"创建房间、加入房间、实时聊天、消息存储"与定稿一致，无需更正；但建议补上**冷场自动调度**，这部分实际由后端承担，分工表未体现。
 
 建议分工表同步更新，否则 5 号按旧表写验收用例会测到已移除的功能。
+
+---
+
+## 10. PR #7 review 修复记录
+
+review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已修并补回归测试。
+测试从 58 项增至 82 项。
+
+### P1
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 1 | 路由无运行时校验，`as never` 不验证请求；省略 `bootstrapToken`／`clientRequestId` 仍返回 201 并共享 `undefined` 引导键；`bio: null` 返回 500 | 新增 `transport/validate.ts`，用契约 `models.schema.json` 做 Ajv 运行时校验，覆盖必填、类型、Secret 格式与 `additionalProperties`；四个写接口全部接入，删除所有 `as never` |
+| 2 | `mentions` 契约是 `["ai"]` 字符串数组，实现却读 `mention.type`，导致合规提及返回 `not_requested`；原测试用了契约不允许的 `[{type:"ai"}]` 所以没发现 | 实现改为 `includes('ai')`；同步修正全部测试与 `demo.mjs` 的请求格式 |
+| 3 | `bus.attach()` 先注册订阅，`markOnline()` 随即广播，抢在快照之前；实测首帧是 `member.presence.changed`，快照里还带着 `connecting`；房主恢复时先收 `room.updated` 再被旧快照覆盖 | `attach()` 改为三步：先更新状态 → 再注册并立即发送快照 → 最后广播变更事件。`applyOnline()` 返回待发事件而不直接广播 |
+
+### P2
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 4 | 旧 socket 的迟到关闭回调持有同一 `MemberRecord`，`detach()` 对已删除订阅返回 true，`markOffline()` 却操作新 membership，导致新入房被标离线并被定时器踢出 | `detach()` 按 `membershipId` 核对归属，不匹配则不触发离线转换；`bus.detach()` 对未知或重复订阅返回 false |
+| 5 | 重试时按当前 invocation 重建回执，丢失首次结果：`rejected/AI_QUEUE_FULL` 退化为 `not_requested`，`ignored` 丢失，已受理后失败的被误报未受理 | `MemberMessageRecord` 新增 `receipt`，保存首次 `AiReceipt` 原文，幂等命中时原样回放 |
+| 6 | 幂等只比较正文，不比较 `mentions`；先发普通消息再以同 ID 同正文加提及会返回成功而不是冲突 | 新增 `mentionsAi` 字段并纳入幂等比较，语义不同即返回 `IDEMPOTENCY_CONFLICT` |
+| 7 | 插件可响应 `AbortSignal` 后正常结束迭代而不抛异常，该调用被标为 `completed` 而非 `failed/AI_TIMEOUT`；超时的话题草稿还会生效 | 消费每个分片前检查 `signal.aborted`；流正常结束后进入成功终态前再检查一次 |
+| 8 | 引导记录的 fingerprint 含完整资料 JSON，关房只删房间、凭证与邀请码，资料原文驻留至进程结束 | `RoomStateStore` 新增 `deleteBootstrapsByRoom()`，关房时清理该房间全部引导记录 |
+| 9 | `minMembers: 2` 使单人房间永不邀答，与 PRD 5.2「只有房主一人时也可邀答、不设人数门槛」冲突 | 移除该配置项与门槛判断，仅保留房间无人时跳过；对应测试按 PRD 重写 |
+| 10 | 只检查字符串长度，纯空白输出仍标 `completed`，而契约要求 completed 的 text 匹配 `NonBlankText` 的 `\S` | 改用 `/\S/.test()` 判定 |
+| 11 | 任何 purpose 的调用收到 topic chunk 都会改当前话题，违反「普通回复不改话题」 | 仅 `invocation.purpose === 'topic'` 时草稿可生效 |
+| 12 | `["travel", " travel "]` 符合输入 Schema，trim 后重复，返回资料违反公共模型的 `uniqueItems` | 归一化后校验唯一性，重复返回 `VALIDATION_ERROR`；建房、入房与 PATCH 共用同一校验 |
+
+### 验证
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx tsc --noEmit` | 通过 |
+| `node --test test/*.test.ts` | **82 / 82 通过**（原 58 + 新增 24） |
+| `npm run check --prefix contracts` | 通过，契约未改动 |
+| `npm run demo` | 28 步全部达成，无未达预期项 |
+
+快照顺序（P1-3）的三项用例做了反向验证：临时还原为旧逻辑后必然失败，
+确认用例确实覆盖该失败路径，而非恒真断言。

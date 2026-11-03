@@ -56,8 +56,6 @@ export interface Config {
     readonly invitationMs: number;
     /** 调度器轮询间隔。 */
     readonly tickMs: number;
-    /** 房间至少有多少名在线成员才自动补话，避免对着空房说话。 */
-    readonly minMembers: number;
   };
 }
 
@@ -89,7 +87,6 @@ export const defaultConfig: Config = {
     topicMs: 45_000,
     invitationMs: 30_000,
     tickMs: 5_000,
-    minMembers: 2,
   },
 };
 
