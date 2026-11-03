@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 契约自检 | `npm run check --prefix contracts` | 通过：11 接口 / 49 模型 / 43 HTTP 样例 / 12 WS 场景 |
 | 类型检查 | `npx tsc --noEmit` | 通过（strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`） |
-| 后端测试 | `node --test test/*.test.ts` | **82 / 82 通过** |
+| 后端测试 | `node --test test/*.test.ts` | **92 / 92 通过** |
 | 错误码盘点 | `test/error-codes.test.ts` | 契约 29 个：**22 个有真实触发路径，7 个显式说明未覆盖原因，无遗漏** |
 
 本计划未修改契约任何字段。
@@ -273,7 +273,7 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 
 后端真实输出全部用 `contracts/models.schema.json` 与 `events.schema.json` 做 Draft 2020-12 校验，不自写一套断言。
 
-### 已通过（82 项）
+### 已通过（92 项）
 
 **身份与入房（11 项，`test/http.test.ts`）**
 
@@ -401,7 +401,7 @@ PR #7 的 12 项 review 问题逐项对应失败路径用例，详见第 10 节�
 ## 10. PR #7 review 修复记录
 
 review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已修并补回归测试。
-测试从 58 项增至 82 项。
+测试从 58 项增至 82 项（第二轮后为 92 项）。
 
 ### P1
 
@@ -430,9 +430,39 @@ review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已�
 | 检查 | 结果 |
 | --- | --- |
 | `npx tsc --noEmit` | 通过 |
-| `node --test test/*.test.ts` | **82 / 82 通过**（原 58 + 新增 24） |
+| `node --test test/*.test.ts` | **82 / 82 通过**（原 58 + 新增 24；第二轮后 92 项） |
 | `npm run check --prefix contracts` | 通过，契约未改动 |
 | `npm run demo` | 28 步全部达成，无未达预期项 |
 
 快照顺序（P1-3）的三项用例做了反向验证：临时还原为旧逻辑后必然失败，
 确认用例确实覆盖该失败路径，而非恒真断言。
+
+---
+
+## 11. PR #7 第二轮 review 修复记录
+
+第二轮提出 5 项 P2，均有实测复现，全部已修并补回归测试。测试从 82 项增至 92 项。
+
+| # | 问题 | 修复 |
+| --- | --- | --- |
+| 1 | 持有 Bearer 的重入分支完全不使用 `clientRequestId`，退出后重试旧请求会再次返回 201 并创建新 membership，迟到的网络重试能撤销用户刚完成的退出 | 新增 `rejoinRequests` 索引（`memberCredential + clientRequestId` → membershipId），旧请求重入返回 `IDEMPOTENCY_CONTEXT_EXPIRED`；关房时随凭证一并清理 |
+| 2 | 匿名 bootstrap 重放不检查资格：成员已退出或被移出时仍返回 201，但 `member.membership` 为 null，无法通过 `RoomEntryData`（要求 `ActiveMember`），客户端取票也会失败 | 新增 `assertReplayable()`，重放前检查移出状态与当前入房；已退出返回 `IDEMPOTENCY_CONTEXT_EXPIRED`，被移出返回 `MEMBER_REMOVED` |
+| 3 | 指纹用 `JSON.stringify(body.profile)`，把 JSON 属性排列顺序当成请求内容；仅调换 `profile` 字段顺序就从 201 变成 `409/BOOTSTRAP_CONFLICT` | 新增 `fingerprintOf()`，按固定字段顺序构造指纹（昵称归一化、标签 trim、bio 缺省为 `""`）；建房与入房共用 |
+| 4 | 只检查是否已有话题，不区分类型；共同话题（`kind: 'common'`）发布后也会进入邀答分支，不符合 CONTEXT.md:37 与 PRD 5.2 对「热门话题发出后持续冷场」的限定 | 邀答分支限定 `currentTopic.kind === 'popular'`；共同话题持续冷场改为换话题 |
+| 5 | `lastAutoAt` 在入队时设置，生成耗时被算进后续等待期；实测邀答等待 70ms、生成约 50ms，话题发布仅 24ms 后就触发邀答 | 自动调用的终态与话题发布处重设 `lastAutoAt`，冷却以输出完成／话题公开时刻为起点 |
+
+### 验证
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx tsc --noEmit` | 通过 |
+| `node --test test/*.test.ts` | **92 / 92 通过**（新增 `test/review-round2.test.ts` 10 项） |
+| `npm run check --prefix contracts` | 通过，契约未改动 |
+| `npm run demo` | 28 步全部达成，无未达预期项 |
+
+第 4、5 项做了反向验证：临时还原旧逻辑后对应用例必然失败，确认覆盖真实失败路径。
+
+### 受影响的既有用例
+
+`test/idle.test.ts` 的「每个话题最多一次随机邀答」原先用 `kind: 'common'`
+构造当前话题，按新语义已改为 `popular`——邀答只在热门话题之后发起。

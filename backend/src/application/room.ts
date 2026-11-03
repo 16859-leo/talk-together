@@ -96,6 +96,21 @@ export class RoomService {
     }
   }
 
+  /**
+   * 重放首次入房结果前检查资格。
+   *
+   * 契约的 RoomEntryData 要求 ActiveMember，若成员已退出或被移出，
+   * 重放会返回 membership 为 null 的响应，既不符合 Schema，
+   * 客户端随后取票也必然失败。此时应返回对应错误而非声称入房成功。
+   */
+  private assertReplayable(member: MemberRecord | undefined): void {
+    if (!member) throw new AppError('ROOM_UNAVAILABLE', '原请求对应的成员不存在');
+    if (member.removed) throw new AppError('MEMBER_REMOVED', '该成员已被移出房间');
+    if (member.membership === null) {
+      throw new AppError('IDEMPOTENCY_CONTEXT_EXPIRED', '原入房已结束，请使用新的请求标识重新加入');
+    }
+  }
+
   // ---------------------------------------------------------------- 资料校验
 
   private validateProfile(input: { nickname?: string; interestTags?: string[]; bio?: string }, prefix = '/profile'): void {
@@ -165,18 +180,49 @@ export class RoomService {
     return existing;
   }
 
+  /**
+   * 按固定字段顺序构造引导请求指纹。
+   *
+   * 不能直接 `JSON.stringify(profile)`：JSON 对象的属性排列顺序不改变提交语义，
+   * 但会改变序列化结果，导致同一请求被判为 BOOTSTRAP_CONFLICT。
+   */
+  private fingerprintOf(
+    intent: string,
+    parts: readonly (string | null)[],
+    profile: { nickname: string; interestTags: string[]; bio?: string },
+  ): string {
+    return JSON.stringify([
+      intent,
+      ...parts,
+      normalizeNickname(profile.nickname),
+      // 标签顺序属于用户输入的一部分，保持原序但统一去除首尾空白。
+      profile.interestTags.map(tag => tag.trim()),
+      profile.bio ?? '',
+    ]);
+  }
+
+  /**
+   * 重入请求的幂等索引：`memberCredential + clientRequestId` → membershipId。
+   *
+   * 协议要求再次入房必须使用新请求 ID，因此记录旧请求归属，
+   * 避免迟到的网络重试撤销用户刚完成的退出。
+   */
+  private readonly rejoinRequests = new Map<string, string>();
+
   // ---------------------------------------------------------------- 建房
 
   createRoom(body: { clientRequestId: string; bootstrapToken: string; profile: { nickname: string; interestTags: string[]; bio?: string } }): {
     status: number;
     data: unknown;
   } {
-    const fingerprint = JSON.stringify(['createRoom', body.clientRequestId, body.profile]);
+    const fingerprint = this.fingerprintOf('createRoom', [body.clientRequestId], body.profile);
     const replay = this.checkBootstrap(body.bootstrapToken, fingerprint);
     if (replay) {
       const room = this.requireRoom(replay.roomId);
-      const member = room.members.get(replay.memberId)!;
-      return { status: 201, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
+      const member = room.members.get(replay.memberId);
+      // 重放前检查资格：被移出或已退出时不能声称入房成功。
+      this.assertReplayable(member);
+      return { status: 201, data: { room: wireRoom(room), member: wireMember(member!), memberCredential: member!.credential } };
     }
 
     this.validateProfile(body.profile);
@@ -226,11 +272,20 @@ export class RoomService {
       if (member.membership !== null) {
         return { status: 200, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
       }
+
+      // 协议要求再次入房必须使用新请求 ID。记录旧请求归属，
+      // 否则迟到的网络重试会重新创建入房，撤销用户刚完成的退出。
+      const rejoinKey = `${member.credential}:${body.clientRequestId}`;
+      if (this.rejoinRequests.has(rejoinKey)) {
+        throw new AppError('IDEMPOTENCY_CONTEXT_EXPIRED', '该请求标识对应的入房已结束，请使用新的请求标识');
+      }
+
       this.validateProfile(body.profile);
       assertNotFull(room);
       assertNicknameAvailable(room, body.profile.nickname, member.id);
       member.profile = this.toProfile(body.profile);
       member.membership = createMembership(room);
+      this.rejoinRequests.set(rejoinKey, member.membership.id);
       this.announceJoin(room, member);
       return { status: 201, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
     }
@@ -241,11 +296,13 @@ export class RoomService {
         fieldErrors: [{ path: '/bootstrapToken', message: '缺少引导凭证' }],
       });
     }
-    const fingerprint = JSON.stringify(['joinRoom', roomId, body.clientRequestId, body.profile]);
+    const fingerprint = this.fingerprintOf('joinRoom', [roomId, body.clientRequestId], body.profile);
     const replay = this.checkBootstrap(body.bootstrapToken, fingerprint);
     if (replay) {
-      const member = room.members.get(replay.memberId)!;
-      return { status: 201, data: { room: wireRoom(room), member: wireMember(member), memberCredential: member.credential } };
+      const member = room.members.get(replay.memberId);
+      // 重放前检查资格，不能对已退出或被移出的成员声称入房成功。
+      this.assertReplayable(member);
+      return { status: 201, data: { room: wireRoom(room), member: wireMember(member!), memberCredential: member!.credential } };
     }
 
     this.validateProfile(body.profile);
@@ -385,6 +442,10 @@ export class RoomService {
 
     for (const member of room.members.values()) {
       this.store.deleteCredential(member.credential);
+      // 该成员的重入请求索引随房间一起清理。
+      for (const key of this.rejoinRequests.keys()) {
+        if (key.startsWith(`${member.credential}:`)) this.rejoinRequests.delete(key);
+      }
       member.membership = null;
       // 关房后清理本产品保存的聊天与公开资料。
       member.profile = { nickname: member.profile.nickname, interestTags: [], bio: '' };

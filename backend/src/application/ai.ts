@@ -109,22 +109,26 @@ export class AiService {
       return this.fireAutomatic('topic', null, now);
     }
 
-    // 二级：已有话题且继续冷场，发起一次随机邀答。
-    if (!this.room.invitedForCurrentTopic && sinceAuto >= this.config.idle.invitationMs) {
+    // 二级：随机邀答按 CONTEXT.md 与 PRD 5.2 限定在「热门话题发出后持续冷场」，
+    // 共同话题不进入邀答分支，继续等待成员围绕共同兴趣自行交流。
+    const isPopularTopic = this.room.currentTopic.kind === 'popular';
+    if (isPopularTopic && !this.room.invitedForCurrentTopic && sinceAuto >= this.config.idle.invitationMs) {
       const target = this.pickInvitee();
       if (target === null) return null;
       this.room.invitedForCurrentTopic = true;
       return this.fireAutomatic('invitation', target.id, now);
     }
 
-    // 本话题已邀答过且仍然冷场，换一个新话题。
-    if (this.room.invitedForCurrentTopic && sinceAuto >= this.config.idle.topicMs) {
+    // 已邀答过、或当前是共同话题，持续冷场则换一个新话题。
+    if ((this.room.invitedForCurrentTopic || !isPopularTopic) && sinceAuto >= this.config.idle.topicMs) {
       return this.fireAutomatic('topic', null, now);
     }
     return null;
   }
 
   private fireAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null, now: number): InvocationRecord | null {
+    // 先按入队时间占位，避免同一轮重复触发；真正的冷却起点在输出结束后重设，
+    // 否则生成耗时会被算进等待期，话题刚发布就立刻邀答。
     this.room.lastAutoAt = now;
     try {
       return this.enqueue({
@@ -429,6 +433,11 @@ export class AiService {
     invocation.queuePosition = null;
     this.prompts.delete(invocation.id);
 
+    // 自动发话的后续冷却从输出真正结束时开始计算，
+    // 否则生成耗时会被算进等待期，成员没有实际回应时间。
+    if (invocation.source === 'automatic') {
+      this.room.lastAutoAt = Date.now();
+    }
     const type = status === 'completed' ? 'ai.reply.completed' : status === 'failed' ? 'ai.reply.failed' : 'ai.reply.cancelled';
     this.bus.publish(type, {
       reply: wireReply(this.room, reply),
@@ -469,6 +478,8 @@ export class AiService {
     };
     // 新话题开始，重置本话题的邀答额度。
     this.room.invitedForCurrentTopic = false;
+    // 后续冷却以话题公开时刻为起点，给成员留下实际回应时间。
+    this.room.lastAutoAt = Date.now();
     // 当前话题按 PRD 单独公开，不做入房前可见性过滤。
     this.bus.publish('topic.changed', { topic: wireTopic(this.room.currentTopic) });
   }

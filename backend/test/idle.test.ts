@@ -100,11 +100,12 @@ test('每个话题最多一次随机邀答，换话题后重置', async t => {
   for (const member of room.members.values()) {
     if (member.membership) member.membership.presence = 'online';
   }
+  // 邀答限定在热门话题之后，因此这里用 popular。
   room.currentTopic = {
     id: 'topic_x',
     title: '最近看过的电影',
     content: '聊聊最近看过的电影',
-    kind: 'common',
+    kind: 'popular',
     sourceLabel: null,
     sourceUrl: null,
     publishedAt: new Date().toISOString(),
