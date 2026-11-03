@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { JoinForm, type JoinValues } from '../features/join/JoinForm'
+import { ProfileForm, type JoinValues } from '../features/join/ProfileForm'
 import { ApiError, getClientConfig } from '../shared/api/client'
 import { joinRoom } from '../shared/api/room'
 import type { ValidationPolicy } from '../shared/api/types'
@@ -218,11 +218,19 @@ export default function JoinPage() {
               </div>
             </div>
           ) : (
-            <JoinForm
+            <ProfileForm
               policy={policy ?? FALLBACK_POLICY}
               submitting={submitting}
               serverError={error}
               fieldErrors={fieldErrors}
+              submitLabel="加入房间"
+              submitNote={
+                <>
+                  进房后可以随时改资料，
+                  <br />
+                  关房后聊天与资料不再保留。
+                </>
+              }
               onSubmit={handleSubmit}
             />
           )}

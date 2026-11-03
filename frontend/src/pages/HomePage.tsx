@@ -49,10 +49,10 @@ export default function HomePage() {
 
             <div className="hero-enter hero-enter--cta mt-8 flex flex-col items-center justify-center gap-3 sm:mt-10 sm:flex-row">
               <Link
-                to={DEMO_INVITE_PATH}
+                to="/create"
                 className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] bg-[#3f7f70] px-6 text-[15px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(63,111,98,.8)] transition-[transform,background-color,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:bg-[#356f62] hover:shadow-[0_18px_32px_-16px_rgba(63,111,98,.75)] active:translate-y-0 sm:w-auto sm:min-w-[218px]"
               >
-                用演示房间进去看看
+                开一个房间
                 <svg
                   viewBox="0 0 20 20"
                   aria-hidden="true"
@@ -70,7 +70,7 @@ export default function HomePage() {
               </Link>
 
               <Link
-                to="/rooms/room_demo"
+                to={DEMO_INVITE_PATH}
                 className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] border-[1.5px] border-[rgba(63,111,98,.34)] bg-[rgba(255,253,247,.52)] px-6 text-[15px] font-medium text-[#4a4135] transition-[transform,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-[rgba(63,111,98,.5)] hover:bg-card active:translate-y-0 sm:w-auto sm:min-w-[232px]"
               >
                 <svg
@@ -87,9 +87,15 @@ export default function HomePage() {
                   />
                   <circle cx="10" cy="10" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
-                直接看房间页（房主视角）
+                用演示房间进去看看
               </Link>
             </div>
+
+            <p className="hero-enter hero-enter--foot mt-4 text-[12px] text-muted">
+              <Link to="/rooms/room_demo" className="underline decoration-[rgba(63,111,98,.35)] underline-offset-4">
+                或者直接看房间页
+              </Link>
+            </p>
           </div>
         </main>
 

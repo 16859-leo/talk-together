@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ValidationPolicy } from '../../shared/api/types'
 
 export interface JoinValues {
@@ -7,17 +7,28 @@ export interface JoinValues {
   bio: string
 }
 
-interface JoinFormProps {
+interface ProfileFormProps {
   policy: ValidationPolicy
   submitting: boolean
   serverError: string | null
   fieldErrors: Record<string, string>
+  submitLabel: string
+  submitNote: ReactNode
   onSubmit: (values: JoinValues) => void | Promise<void>
 }
 
 const SUGGESTIONS = ['电影', '旅行', '咖啡', '摄影', '游戏', '烘焙', '猫']
 
-export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmit }: JoinFormProps) {
+/** 昵称 + 兴趣标签 + 简介，加入房间和创建房间共用。 */
+export function ProfileForm({
+  policy,
+  submitting,
+  serverError,
+  fieldErrors,
+  submitLabel,
+  submitNote,
+  onSubmit,
+}: ProfileFormProps) {
   const [nickname, setNickname] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')
@@ -192,13 +203,9 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
           disabled={submitting}
           className="rounded-2xl bg-sage-deep px-7 py-3 text-[14px] font-semibold text-white shadow-[0_10px_22px_-12px_rgba(95,165,147,.9)] transition-all hover:bg-[#549c8b] disabled:opacity-60"
         >
-          {submitting ? '正在进去…' : '加入房间'}
+          {submitting ? '稍等…' : submitLabel}
         </button>
-        <p className="text-[11.5px] leading-relaxed text-muted">
-          进房后可以随时改资料，
-          <br />
-          关房后聊天与资料不再保留。
-        </p>
+        <p className="text-[11.5px] leading-relaxed text-muted">{submitNote}</p>
       </div>
     </form>
   )

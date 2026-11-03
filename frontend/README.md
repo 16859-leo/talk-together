@@ -27,7 +27,8 @@ npm run mock:ws --prefix ../contracts -- host-stream
 
 | 路由 | 页面 | 状态 |
 | --- | --- | --- |
-| `/` | 开场 | 全屏标题 talk together |
+| `/` | 开场 | 全屏标题 talk together，主按钮开房 |
+| `/create` | 创建房间 | `POST /rooms`，建成后直接进房 |
 | `/join/:roomId?inviteCode=` | 入房 | 真实提交 `POST /rooms/{id}/members`，含引导凭证与错误映射 |
 | `/rooms/:roomId` | 房间 | WS 事件流 + 发送 + 退出；已有关房/被移出终态 |
 
@@ -64,7 +65,6 @@ src/
 
 ## 还没做的
 
-- 创建房间页（`POST /rooms`）与房主创建流程；
 - 改资料、移出成员、关闭房间；
 - 断线期间的消息占位与更细的重连状态。
 
