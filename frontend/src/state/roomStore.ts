@@ -189,6 +189,19 @@ export function dispatchEvent(event: ServerMessage) {
   dispatch({ type: 'event', event })
 }
 
+/**
+ * 统一入口：快照总是整体替换；增量事件只接受比当前游标更新的序号。
+ * 跳号正常（可见性过滤会跳），重复序号直接丢弃。
+ */
+export function applyServerMessage(message: ServerMessage) {
+  if (message.type === 'room.snapshot') {
+    dispatch({ type: 'snapshot', data: message.data, cursor: message.cursor })
+    return
+  }
+  if (message.sequence <= getRoomState().cursor) return
+  dispatch({ type: 'event', event: message })
+}
+
 export function getRoomState(): RoomState {
   return state
 }

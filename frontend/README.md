@@ -1,6 +1,8 @@
 # frontend
 
-`搭个话` 的前端（Vite + React + TypeScript + Tailwind v4）。当前是 M0/M1 阶段：页面骨架、入房表单、房间页渲染都跑通了，网络层只接了 `client-config`，WebSocket 与写接口还没接。
+`搭个话` 的前端（Vite + React + TypeScript + Tailwind v4）。
+
+当前进度：**M2 进行中**。WebSocket 链路（领票 → 建连 → 首帧快照 → 增量事件）和发送接口已经接上，并对 `contracts` 的本地 Mock 跑通；入房与创建房间的写接口还没接，演示时用本地快照 + 开发态身份。
 
 ## 启动
 
@@ -11,39 +13,61 @@ npm run typecheck      # tsc --noEmit
 npm run build          # tsc -b && vite build
 ```
 
-`/api` 通过 Vite 代理到 `http://127.0.0.1:4010`（`contracts` 的 Prism Mock）：
+联调时另开两个终端起 Mock：
 
 ```bash
 npm run mock:http --prefix ../contracts
+npm run mock:ws --prefix ../contracts -- host-stream
 ```
+
+`/api` 通过 Vite 代理到 `http://127.0.0.1:4010`；WS 地址由票据接口返回的 `webSocketUrl` 决定，前端不自行拼接。
 
 ## 路由
 
 | 路由 | 页面 | 状态 |
 | --- | --- | --- |
-| `/` | 入口 | 演示用，两个入口 |
-| `/join/:roomId?inviteCode=` | 入房 | 表单 + 校验已做，提交暂时直接跳房间 |
-| `/rooms/:roomId` | 房间 | 用本地快照渲染，输入可发消息（仅本地） |
+| `/` | 开场 | 全屏标题 talk together |
+| `/join/:roomId?inviteCode=` | 入房 | 表单校验来自 `client-config`；提交暂时直接跳房间 |
+| `/rooms/:roomId` | 房间 | 接 WS 事件流；发送走 `POST /messages` |
 
 ## 目录
 
 ```
 src/
-├── app/App.tsx            路由表
-├── pages/                 Home / Join / Room
+├── app/App.tsx              路由表
+├── pages/                   Home / Join / Room
 ├── features/
-│   ├── join/JoinForm      昵称、兴趣标签、简介 + 校验
-│   ├── room/MemberCard    成员名片（角色色、标签、掉线倒计时）
-│   ├── room/InviteDialog  二维码 + 复制链接
+│   ├── join/JoinForm        昵称、兴趣标签、简介 + 校验
+│   ├── room/MemberCard      成员名片（角色色、标签、掉线倒计时）
+│   ├── room/InviteDialog    二维码 + 复制链接
 │   └── chat/ChatFeed、Composer
 ├── state/
-│   ├── roomStore.ts       reducer + useSyncExternalStore（已处理 snapshot / message.created / topic.changed / 成员事件 / AI 流式）
-│   └── demo.ts            本地快照，后端就绪后删除
+│   ├── roomStore.ts         reducer + useSyncExternalStore，含游标去重
+│   ├── session.ts           房间级凭证存取（localStorage）
+│   └── demo.ts              本地快照，作为后端未起时的兜底
 └── shared/
-    ├── api/client.ts      请求封装：Bearer、X-Membership-Id、错误归一（ApiError）
-    ├── api/types.ts       从 @talk-together/contracts 转出的类型别名
+    ├── api/client.ts        统一信封、ApiError、Bearer 与 X-Membership-Id
+    ├── api/room.ts          票据、发消息、加入、创建
+    ├── realtime/connection.ts  领票 → 建连 → 快照 → 事件；断线重连续票
     └── ui/Avatar、personColor
 ```
+
+## 已实现的协议行为
+
+- 每次连接（含重连）单独领取一次性票据，使用服务端返回的 `webSocketUrl`；
+- 首帧 `room.snapshot` 整体替换状态并以 `cursor` 起算；
+- 之后只接受 `sequence > cursor` 的事件，跳号正常、重复丢弃；
+- 断线退避重连 0.5s → 5s，重连前重新领票；
+- 发送带 `clientRequestId`，回执里的 `ai.status` 会区分「未受理 / 被忽略」，失败按 `retryAfterMs` 提示；
+- 后端不可达时退回本地发送，界面不假死。
+
+## 还没做的
+
+- 入房与创建房间的真实提交（`bootstrapToken` + `clientRequestId` 幂等、多标签页共用一份待提交凭证）；
+- 发送失败后的重试策略（目前每次发送生成新 ID，尚未复用上一次的 ID 重试）；
+- 改资料、移出成员、关房，以及被移出/关房/满员的终态页；
+- 断线期间的时间轴占位与「重连中」更细的状态提示；
+- 单元测试：reducer 回放 `contracts/examples/ws/*` 的 12 个场景。
 
 ## 契约
 
@@ -54,15 +78,6 @@ import type { components } from '@talk-together/contracts'
 ```
 
 前端不导入 `backend/` 的任何代码。协议字段变更先改 `contracts/`，重跑 `npm run types --prefix contracts`。
-
-## 还没做的
-
-- WebSocket：领票 → 连 `webSocketUrl` → 用 `room.snapshot` 初始化 → 只处理 `sequence > cursor`；
-- 写接口：创建 / 加入 / 改资料 / 移出 / 关房，以及 `clientRequestId` 幂等与本地重试；
-- 入房前两次提交的 `bootstrapToken` 与多标签页协调；
-- 发送时 `mentions: ["ai"]` 的真实提交与 `ai.status` 回执展示；
-- 空态、错误态、限频冷却、被移出与关房终态页；
-- 单元测试（reducer 回放 `contracts/examples/ws/*`）。
 
 ## 设计
 

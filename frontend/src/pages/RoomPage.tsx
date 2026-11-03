@@ -4,9 +4,22 @@ import { MemberCard } from '../features/room/MemberCard'
 import { ChatFeed } from '../features/chat/ChatFeed'
 import { Composer } from '../features/chat/Composer'
 import { InviteDialog } from '../features/room/InviteDialog'
-import { demoCursor, demoSnapshot } from '../state/demo'
-import { dispatch, useRoomState } from '../state/roomStore'
+import { ApiError } from '../shared/api/client'
+import { sendMessage } from '../shared/api/room'
 import type { MemberMessage } from '../shared/api/types'
+import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
+import { demoCursor, demoSnapshot } from '../state/demo'
+import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
+import { devSession, loadSession } from '../state/session'
+
+const STATUS_TEXT: Record<StreamStatus, string | null> = {
+  ticketing: '连接中…',
+  connecting: '连接中…',
+  live: null,
+  reconnecting: '重连中…',
+  closed: '房间已关闭',
+  failed: '连接不上服务器',
+}
 
 export default function RoomPage() {
   const { roomId = '' } = useParams()
@@ -14,13 +27,37 @@ export default function RoomPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [leaveOpen, setLeaveOpen] = useState(false)
+  const [status, setStatus] = useState<StreamStatus>('ticketing')
+  const [notice, setNotice] = useState<string | null>(null)
 
-  // TODO(wire-ws): 换成先领票、连 WS、用 room.snapshot 初始化。
+  // 后端未接时先用本地快照撑起界面；收到 WS 快照会被整体替换。
   useEffect(() => {
     if (!state.ready) {
       dispatch({ type: 'snapshot', data: demoSnapshot, cursor: demoCursor })
     }
   }, [state.ready])
+
+  // 领票 → 建连 → 首帧快照 → 事件流。
+  useEffect(() => {
+    const session = loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null)
+    if (!session) return undefined
+    const controller = new AbortController()
+    const close = openRoomStream({
+      roomId: roomId || 'room_demo',
+      credential: session.credential,
+      membershipId: session.membershipId,
+      signal: controller.signal,
+      onStatus: (next, detail) => {
+        setStatus(next)
+        if (next === 'failed' && detail) setNotice(detail)
+      },
+      onMessage: applyServerMessage,
+    })
+    return () => {
+      controller.abort()
+      close()
+    }
+  }, [roomId])
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -39,19 +76,53 @@ export default function RoomPage() {
   const canMention = self?.role === 'host'
   const onlineCount = state.members.filter((m) => m.membership?.presence !== 'offline').length
   const capacity = state.room?.capacity ?? 5
+  const statusText = STATUS_TEXT[status]
 
-  function handleSend(text: string) {
-    if (!self || !selfMember) return
-    const message: MemberMessage = {
-      id: `local_${Date.now()}`,
-      kind: 'member',
-      author: { memberId: self.memberId, nickname: selfMember.profile.nickname },
-      text,
-      clientRequestId: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      createdSequence: state.cursor + 1,
+  async function handleSend(text: string, mentions: 'ai'[]) {
+    const session = loadSession(roomId) ?? (import.meta.env.DEV ? devSession() : null)
+    setNotice(null)
+    if (!session) {
+      setNotice('还没加入这个房间')
+      return
     }
-    dispatch({ type: 'local-message', message })
+    try {
+      const data = await sendMessage(
+        roomId || 'room_demo',
+        { clientRequestId: crypto.randomUUID(), text, mentions },
+        session,
+      )
+      dispatch({ type: 'local-message', message: data.message })
+      if (data.ai.status === 'rejected') {
+        setNotice(`AI 没受理：${data.ai.error.message}`)
+      } else if (data.ai.status === 'ignored') {
+        setNotice('普通成员的 @AI 会被忽略，文字照常发出')
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 0) {
+        // 后端没起时保留可用的本地输入，避免演示中断
+        if (!self || !selfMember) return
+        const fallback: MemberMessage = {
+          id: `local_${Date.now()}`,
+          kind: 'member',
+          author: { memberId: self.memberId, nickname: selfMember.profile.nickname },
+          text,
+          clientRequestId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          createdSequence: state.cursor + 1,
+        }
+        dispatch({ type: 'local-message', message: fallback })
+        setNotice('后端未连接，这条只存在本地')
+        return
+      }
+      if (error instanceof ApiError) {
+        const wait = error.retryAfterMs
+          ? `（${Math.ceil(error.retryAfterMs / 1000)} 秒后可再试）`
+          : ''
+        setNotice(`${error.message}${wait}`)
+      } else {
+        setNotice('发送失败，稍后再试')
+      }
+    }
   }
 
   if (!state.ready) {
@@ -74,8 +145,12 @@ export default function RoomPage() {
               {state.members.length} / {capacity}
             </span>
             <span className="hidden items-center gap-1.5 sm:flex">
-              <i className="block h-1.5 w-1.5 rounded-full bg-sage" />
-              {onlineCount} 人在线
+              <i
+                className={`block h-1.5 w-1.5 rounded-full ${
+                  status === 'live' ? 'bg-sage' : 'bg-coral'
+                }`}
+              />
+              {statusText ?? `${onlineCount} 人在线`}
             </span>
           </div>
           <div className="flex-1" />
@@ -132,6 +207,11 @@ export default function RoomPage() {
             <hr className="rule" />
             <ChatFeed messages={state.messages} />
             <Composer canMention={canMention} onSend={handleSend} />
+            {notice && (
+              <p className="mt-1 rounded-lg bg-[rgba(177,105,74,.1)] px-3 py-1.5 text-[11.5px] text-brick">
+                {notice}
+              </p>
+            )}
           </section>
 
           <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-[38px_32px_40px_34px] border border-rule-soft bg-paper p-5 shadow-soft no-scrollbar">
