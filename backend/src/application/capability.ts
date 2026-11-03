@@ -1,5 +1,5 @@
 /**
- * 能力插件统一接口（交给 3 号实现）。
+ * 能力插件统一接口，供应用层与 TopicsCapability 共用。
  *
  * 四条硬约束：
  * 1. 上下文只读：插件不持有房间对象，也不能改房间状态。
@@ -64,7 +64,7 @@ export interface Capability {
 /**
  * 假插件：按固定节奏逐字输出，不接入任何模型。
  *
- * 用于在 3 号的实现就绪前把队列、串行、取消与终态互斥测稳，之后仍保留用于回归。
+ * 默认用于本地运行、demo 和离线回归，验证队列、串行、取消与终态互斥。
  */
 export const createStubCapability = (options: { delayMs?: number } = {}): Capability => {
   const delayMs = options.delayMs ?? 30;

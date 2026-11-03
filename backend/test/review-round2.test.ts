@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHost, harness, joinGuest, secret, testConfig, uuid, validateModel } from './helpers.ts';
-import { createStubCapability, type Capability } from '../src/application/capability.ts';
+import type { Capability } from '../src/application/capability.ts';
 
 /** PR #7 第二轮 review 的 5 项 P2 回归测试。 */
 

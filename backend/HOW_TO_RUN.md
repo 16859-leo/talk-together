@@ -2,7 +2,7 @@
 
 本文件面向第一次上手的人，命令可直接复制。全部命令都在 `backend/` 目录下执行。
 
-环境要求：Node.js ≥ 24.15.0（已验证本机系统 Node 为 v24.15.0，可直接用）。
+环境要求：Node.js ≥ 24.18.0（契约包要求；合并验证使用 v24.19.0）。
 
 ---
 
@@ -13,7 +13,7 @@
 ```bash
 cd D:\作业\实践周\talk-together
 npm ci --prefix contracts
-npm install --prefix backend
+npm ci --prefix backend
 ```
 
 说明：后端通过 `file:../contracts` 引用契约包，所以两个目录的依赖都要装。
@@ -68,12 +68,12 @@ npm test
 预期输出末尾：
 
 ```
-ℹ tests 58
-ℹ pass 58
+ℹ tests 197
+ℹ pass 197
 ℹ fail 0
 ```
 
-只跑某一个文件：
+上述命令覆盖后端 103 项与 Agent 94 项离线测试，不调用真实模型。只跑某一个文件：
 
 ```bash
 node --test test/ws.test.ts          # 实时与流式，8 项
@@ -200,14 +200,14 @@ shell 转义和编码问题，而且把 28 步都串好了。
 cd D:\作业\实践周\talk-together && npm run check --prefix contracts && cd backend && npm run typecheck && npm test && npm run demo
 ```
 
-四项依次通过即表示：契约未破坏、类型正确、58 项断言通过、端到端流程跑通。
+四项依次通过即表示：契约未破坏、类型正确、197 项离线测试通过、端到端流程跑通。
 
 ---
 
 ## 常见问题
 
 **`npm : 无法将"npm"项识别为...`**
-终端没找到 Node。在看山工作台的终端里跑，或确认系统已安装 Node ≥ 24.15.0。
+终端没找到 Node。在看山工作台的终端里跑，或确认系统已安装 Node ≥ 24.18.0。
 
 **`Cannot find package '@talk-together/contracts'`**
 契约依赖没装。回到第 0 步执行 `npm ci --prefix contracts`。
@@ -237,7 +237,9 @@ cd D:\作业\实践周\talk-together && npm run check --prefix contracts && cd b
 ## 说明
 
 - 演练里的 AI 文本来自**假插件**（固定内容、不接任何模型），验证的是后端的调度与
-  事件逻辑（队列、串行、取消、可见性）。真实选题与话术由 3 号的能力实现提供，
-  接口见 `src/application/capability.ts`。
+  事件逻辑（队列、串行、取消、可见性）。默认 `npm start` 也使用假插件。
+- 真实选题与话术的 Agent 实现已合入，与应用层共用 `src/application/capability.ts`。
+  启用真实模型需显式传入 `build({ config, capability })`，并提供 DeepSeek 密钥和知乎 CLI 路径；
+  仅设置环境变量不会自动切换插件，详见 [插件装配说明](src/capabilities/topics/README.md)。
 - 演练把恢复期压到 2 秒、限频窗口压到 1.5 秒，否则要等 60 秒才能看到效果。
   生产配置在 `src/config.ts`，未改动。

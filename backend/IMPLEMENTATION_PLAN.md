@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | 契约自检 | `npm run check --prefix contracts` | 通过：11 接口 / 49 模型 / 43 HTTP 样例 / 12 WS 场景 |
 | 类型检查 | `npx tsc --noEmit` | 通过（strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`） |
-| 后端测试 | `node --test test/*.test.ts` | **103 / 103 通过** |
+| 后端与 Agent 测试 | `npm test` | **197 / 197 通过**（后端 103 + Agent 94） |
 | 错误码盘点 | `test/error-codes.test.ts` | 契约 29 个：**22 个有真实触发路径，7 个显式说明未覆盖原因，无遗漏** |
 
 本计划未修改契约任何字段。
@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | `transport/http/`、`transport/ws/` 两个子目录 | `transport/wire.ts` + 路由与网关集中在 `app.ts` | 当前路由与网关合计约 200 行，拆成两级目录只增加跳转成本；超出一屏时再拆 |
 | `domain/` 下 `room/member/message/topic` 四个文件 | `domain/room.ts` 承载四类记录与不变量 | 这四类状态同属房间聚合、互相引用紧密，强行拆分会产生循环依赖 |
-| `capabilities/topics/`、`infrastructure/model/`、`infrastructure/zhihu/` | 未创建 | **归 3 号交付**，由其按第 3 节接口自行组织 |
+| `capabilities/topics/`、`infrastructure/model/`、`infrastructure/zhihu/` | 已由 PR #5 合入 | **归 3 号交付**，本次合并保留实现并共用第 3 节接口 |
 
 `infrastructure/state/` 已按文档创建，不属于差异。
 
@@ -257,9 +257,10 @@ const app = await build({ config, capability: new TopicsCapability(deps) });
 | 4 | AI 队列、FIFO、串行、流式六事件（假插件驱动） | 已完成 |
 | 5 | 退出、移出、关房、终止顺序与数据清理 | 已完成 |
 | 6 | 冷场调度、自动选题与随机邀答 | 已完成 |
-| 7 | 换装 3 号真实能力实现，跑 handoff 九条场景 | 待 3 号交付实现 |
+| 7 | 换装 3 号真实能力实现，跑 handoff 九条场景 | 能力代码已合入；真实装配与联调待执行 |
 
-切片 7 不阻塞 3 号开工：接口已定案，3 号可按第 3 节签名独立开发并用自己的 mock 验证；装配只需在 `app.ts` 换一行。
+应用层和 Agent 已共用第 3 节接口；默认启动仍使用假插件。
+真实能力通过 `build({ config, capability })` 注入，密钥与知乎 CLI 路径由启动装配提供，见插件 README。
 
 ### 补测阶段修掉的实现缺陷
 
@@ -361,7 +362,7 @@ PR #7 的 12 项 review 问题逐项对应失败路径用例，详见第 10 节�
 
 无。第 6 节原列的三项（房主掉线超时关房与恢复、旧入房重试 `IDEMPOTENCY_CONTEXT_EXPIRED`、错误码盘点）均已完成。
 
-剩余工作全部依赖外部交付：切片 7 需要 3 号的真实能力实现，联调九条场景需要 4 号的前端。
+Agent PR #5 与前端 PR #6 均已合入 main；剩余工作为真实能力启动装配和 handoff 九条场景联调。
 
 ### 联调场景
 
@@ -496,3 +497,14 @@ review 提出 12 项（3 项 P1、9 项 P2），均有实测复现，全部已�
 验证第 4 项时发现：`text/plain` 命中 Fastify **内置**解析器，按 400 处理；
 只有未注册的类型（如 `application/xml`）才产生 415。
 两条路径现在都不会退化为 500，测试分别覆盖。
+
+---
+
+## 13. 合入 main 后的冲突处理
+
+- `package.json` 合并后端与 Agent 依赖，保留后端启动和 demo 脚本；以 main 的锁文件为起点重新生成 `package-lock.json`，并通过 `npm ci` 验证。
+- `tsconfig.json` 保留 Node 原生 TypeScript 运行设置，以及 main 的未使用代码、大小写检查；移除严格检查发现的 10 个未使用导入。
+- `application/capability.ts` 统一采用应用层接口，保留当前话题类型、可选来源字段和假插件；Agent 冒烟脚本补齐邀答话题的 `kind`。
+- 默认启动仍使用假插件；真实能力代码已合入，启动装配与真实模型联调另行执行。
+
+合并验证：类型检查、197 项离线测试（后端 103 + Agent 94）、契约自检及 28 步 demo 全部通过。

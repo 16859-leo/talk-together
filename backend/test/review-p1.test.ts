@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { WebSocket } from 'ws';
-import { build } from '../src/app.ts';
-import { createStubCapability } from '../src/application/capability.ts';
-import { createHost, harness, joinGuest, secret, testConfig, uuid, validateModel } from './helpers.ts';
-import type { Config } from '../src/config.ts';
+import { createHost, harness, joinGuest, secret, uuid, validateModel } from './helpers.ts';
 
 /**
  * PR #7 review 提出的 12 项问题的回归测试。

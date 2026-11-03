@@ -7,7 +7,6 @@ import {
   createRoomRecord,
   nextSequence,
   normalizeNickname,
-  occupiedSlots,
   type MemberRecord,
   type Profile,
   type RoomRecord,

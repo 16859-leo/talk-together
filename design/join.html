@@ -1,0 +1,207 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭个话 · 入房</title>
+<style>
+  :root{
+    --paper:#faf5eb; --sage:#7cb9a8; --sage-deep:#5fa593; --coral:#e8a87c; --sun:#e8c07a;
+    --ink:#3a3226; --ink-2:#5a4f42; --muted:#7c6b58;
+    --rule:rgba(139,115,85,.2); --rule-soft:rgba(139,115,85,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:linear-gradient(180deg,#a6dcd1 0%, #cfe4c6 26%, #f0e2bd 58%, #f4d7a9 84%, #edc795 100%);
+    font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+    font-size:15px;line-height:1.7;color:var(--ink);
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  .sky{position:fixed;inset:0;z-index:0;pointer-events:none;filter:blur(18px);opacity:.8}
+  .sky::before{content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(280px 110px at 12% 6%, rgba(255,255,255,.9), transparent 72%),
+      radial-gradient(340px 120px at 52% -4%, rgba(255,255,255,.75), transparent 70%),
+      radial-gradient(240px 100px at 88% 4%, rgba(255,255,255,.8), transparent 72%),
+      radial-gradient(190px 190px at 95% -8%, rgba(244,172,84,.75), transparent 70%);}
+  body::after{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");}
+  .wrap{position:relative;z-index:2;height:100vh;max-width:1300px;margin:0 auto;padding:0 48px;
+        display:grid;grid-template-columns:minmax(0,46fr) minmax(0,54fr);gap:56px;align-items:center}
+
+  /* 左：叙事 */
+  .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:700;letter-spacing:.04em;margin-bottom:26px}
+  .brand .leaf{width:16px;height:16px;background:var(--sage);border-radius:60% 40% 55% 45% / 50% 60% 40% 50%;
+               box-shadow:inset -2px -2px 0 rgba(90,74,58,.15)}
+  h1{font-size:44px;line-height:1.24;font-weight:700;letter-spacing:-.01em;color:#33291d}
+  h1 .u{position:relative;display:inline-block}
+  h1 svg{position:absolute;left:2px;bottom:-10px;width:100%;height:14px;overflow:visible}
+  .lede{font-size:14.5px;color:var(--ink-2);margin-top:18px;max-width:34ch}
+
+  .roomline{display:flex;align-items:center;gap:10px;margin-top:26px;font-size:13px;color:var(--muted)}
+  .roomline b{color:var(--ink);font-weight:600}
+  .faces{display:flex;margin-top:16px}
+  .face{width:46px;height:46px;margin-right:-12px;display:grid;place-items:center;font-size:14px;
+        border-radius:52% 48% 45% 55% / 48% 52% 48% 52%;border:1.5px solid var(--c1);
+        background:var(--c2);color:var(--c3)}
+  .face:last-child{margin-right:0}
+  .face.ghost{border-style:dashed;background:rgba(255,253,247,.5);color:var(--muted);border-color:rgba(139,115,85,.35);font-size:16px}
+  .hintline{margin-top:18px;font-size:12.5px;color:var(--muted)}
+  .hintline i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--coral);margin-right:7px;vertical-align:1px}
+
+  /* 右：表单 */
+  .card{background:var(--paper);border:1.5px solid rgba(139,115,85,.24);border-radius:34px;
+        padding:32px 34px 28px;box-shadow:0 26px 50px -30px rgba(92,64,51,.45);position:relative}
+  .field{margin-bottom:18px}
+  .field label{display:flex;align-items:baseline;gap:6px;font-size:12.5px;color:var(--muted);margin-bottom:7px}
+  .field label b{color:var(--ink);font-weight:600;font-size:13px}
+  .field label .req{color:#b1694a;font-size:12px}
+  .field label .opt{font-size:11.5px;color:#a1907c}
+  input[type=text],textarea{width:100%;font:inherit;font-size:14px;color:#5a4a3a;background:#fffdf7;
+        border:1.5px solid rgba(139,115,85,.28);border-radius:14px;padding:10px 14px;outline:none;
+        transition:border-color .4s ease-in-out, box-shadow .4s ease-in-out}
+  input[type=text]::placeholder,textarea::placeholder{color:#ac9c86}
+  input[type=text]:focus,textarea:focus{border-color:rgba(96,166,150,.7);box-shadow:0 0 0 4px rgba(124,185,168,.14)}
+  textarea{resize:none;height:76px;line-height:1.6}
+
+  .tagbox{display:flex;flex-wrap:wrap;gap:7px;align-items:center;background:#fffdf7;
+        border:1.5px solid rgba(139,115,85,.28);border-radius:14px;padding:8px 10px;min-height:46px;
+        transition:border-color .4s ease-in-out, box-shadow .4s ease-in-out}
+  .tagbox:focus-within{border-color:rgba(96,166,150,.7);box-shadow:0 0 0 4px rgba(124,185,168,.14)}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#2f5f56;
+       background:#e4f0ea;border:1px solid rgba(79,143,130,.4);border-radius:999px;padding:2px 6px 2px 10px}
+  .tag button{border:none;background:transparent;color:#6f8f86;font-size:13px;line-height:1;padding:0 2px;cursor:pointer}
+  .tagbox input{border:none;background:transparent;box-shadow:none;padding:4px 2px;flex:1;min-width:110px}
+  .tagbox input:focus{box-shadow:none;border:none}
+  .suggest{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .suggest span{font-size:11.5px;color:var(--muted);border:1px dashed rgba(139,115,85,.35);
+        border-radius:999px;padding:2px 10px;cursor:pointer;transition:all .3s ease}
+  .suggest span:hover{background:rgba(124,185,168,.16);color:#3f6156;border-color:rgba(96,166,150,.5)}
+
+  .foot{display:flex;align-items:center;gap:14px;margin-top:22px}
+  .join{flex:none;font:inherit;font-size:14px;font-weight:600;color:#fff;background:var(--sage-deep);
+        border:none;border-radius:16px;padding:12px 30px;cursor:pointer;
+        box-shadow:0 10px 22px -12px rgba(95,165,147,.9);transition:all .4s ease-in-out}
+  .join:hover{background:#549c8b;transform:translateY(-1px)}
+  .join:active{transform:scale(.99)}
+  .foot .note{font-size:11.5px;color:var(--muted);line-height:1.6}
+  .err{display:none;color:#a3471f;font-size:11.5px;margin-top:5px}
+  .field.invalid .err{display:block}
+  .field.invalid input,.field.invalid .tagbox{border-color:rgba(163,71,31,.55)}
+</style>
+</head>
+<body>
+<div class="sky"></div>
+<div class="wrap">
+  <!-- 左 -->
+  <section>
+    <div class="brand"><span class="leaf"></span>搭个话</div>
+    <h1><span class="u">进来坐坐，
+      <svg viewBox="0 0 300 10" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M2 7 C 60 2, 110 9, 160 5 S 250 2, 298 6" fill="none" stroke="#5fa593" stroke-width="3.4"
+              stroke-linecap="round" opacity=".6"/>
+      </svg></span><br/>就差你了</h1>
+    <p class="lede">小林 在房间里等你。填好名字和兴趣，我们就能开始聊。</p>
+
+    <div class="roomline"><b>小林 的房间</b><span>·</span><span>5 人上限</span><span>·</span><span>已到 4 人</span></div>
+    <div class="faces">
+      <div class="face" style="--c1:#4f8f82;--c2:#e4f0ea;--c3:#2f5f56">林</div>
+      <div class="face" style="--c1:#4e9aa6;--c2:#e2eff1;--c3:#2c5b64">周</div>
+      <div class="face" style="--c1:#b16f84;--c2:#f5e6ea;--c3:#6d3b4a">岚</div>
+      <div class="face" style="--c1:#cfa152;--c2:#f8eed7;--c3:#7a5a20">米</div>
+      <div class="face ghost">+</div>
+    </div>
+    <div class="hintline"><i></i>还差 1 个人，人满就锁座</div>
+  </section>
+
+  <!-- 右 -->
+  <form class="card" id="form" novalidate>
+    <div class="field" id="f-nick">
+      <label><b>昵称</b><span class="req">必填</span><span>· 房间里不能重名</span></label>
+      <input type="text" id="nickname" placeholder="别人怎么叫你？" maxlength="12" />
+      <div class="err">起个名字才能进去</div>
+    </div>
+
+    <div class="field" id="f-tags">
+      <label><b>兴趣标签</b><span class="req">必填</span><span>· 至少一个，用来找共同话题</span></label>
+      <div class="tagbox" id="tagbox">
+        <span class="tag" data-tag="阅读">阅读<button type="button" aria-label="删除">×</button></span>
+        <input type="text" id="tagInput" placeholder="输入后回车添加" />
+      </div>
+      <div class="suggest" id="suggest">
+        <span>电影</span><span>旅行</span><span>咖啡</span><span>摄影</span><span>游戏</span><span>烘焙</span><span>猫</span>
+      </div>
+      <div class="err">先选一个兴趣，导播好帮你起话题</div>
+    </div>
+
+    <div class="field" id="f-bio">
+      <label><b>个人简介</b><span class="opt">可选</span><span>· 写一句也可以</span></label>
+      <textarea id="bio" placeholder="比如：最近在读科幻，周末喜欢做饭——写不写都行，空着也没关系。"></textarea>
+    </div>
+
+    <div class="foot">
+      <button class="join" type="submit">加入房间</button>
+      <div class="note">进房后可以随时改资料，<br/>关房后聊天与资料不再保留。</div>
+    </div>
+  </form>
+</div>
+
+<script>
+(() => {
+  const nick = document.getElementById('nickname');
+  const tagbox = document.getElementById('tagbox');
+  const tagInput = document.getElementById('tagInput');
+  const suggest = document.getElementById('suggest');
+
+  function addTag(text) {
+    const v = text.trim();
+    if (!v) return;
+    if ([...tagbox.querySelectorAll('.tag')].some(t => t.dataset.tag === v)) return;
+    const el = document.createElement('span');
+    el.className = 'tag';
+    el.dataset.tag = v;
+    el.innerHTML = `${v}<button type="button" aria-label="删除">×</button>`;
+    tagbox.insertBefore(el, tagInput);
+    tagInput.value = '';
+  }
+
+  tagInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === '，' || e.key === ',') {
+      e.preventDefault();
+      addTag(tagInput.value);
+    }
+    if (e.key === 'Backspace' && !tagInput.value) {
+      const tags = tagbox.querySelectorAll('.tag');
+      if (tags.length) tags[tags.length - 1].remove();
+    }
+  });
+
+  tagbox.addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON') e.target.closest('.tag').remove();
+    else tagInput.focus();
+  });
+
+  suggest.addEventListener('click', e => {
+    if (e.target.tagName === 'SPAN') addTag(e.target.textContent);
+  });
+
+  document.getElementById('form').addEventListener('submit', e => {
+    e.preventDefault();
+    const fNick = document.getElementById('f-nick');
+    const fTags = document.getElementById('f-tags');
+    fNick.classList.toggle('invalid', !nick.value.trim());
+    fTags.classList.toggle('invalid', tagbox.querySelectorAll('.tag').length === 0);
+    if (fNick.classList.contains('invalid') || fTags.classList.contains('invalid')) {
+      (fNick.classList.contains('invalid') ? nick : tagInput).focus();
+      return;
+    }
+    const btn = e.target.querySelector('.join');
+    btn.textContent = '正在进去…';
+    btn.disabled = true;
+  });
+
+  nick.addEventListener('input', () => document.getElementById('f-nick').classList.remove('invalid'));
+})();
+</script>
+</body>
+</html>

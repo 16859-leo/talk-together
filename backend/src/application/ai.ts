@@ -10,7 +10,7 @@ import {
   type ReplyPurpose,
   type RoomRecord,
 } from '../domain/room.ts';
-import { wireInvocation, wireReply, wireRoom, wireTopic } from '../transport/wire.ts';
+import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
 import type { RoomBus } from './bus.ts';
 import type { Capability, CapabilityContext, CapabilityMemberView } from './capability.ts';
 

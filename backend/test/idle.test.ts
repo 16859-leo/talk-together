@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createHost, harness, joinGuest, secret, testConfig, uuid } from './helpers.ts';
+import { createHost, harness, joinGuest, testConfig, uuid } from './helpers.ts';
 import { createStubCapability } from '../src/application/capability.ts';
 
 /** 冷场调度是纯函数式判定，用注入时间戳驱动，不依赖真实等待。 */

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from '../src/app.ts';
 import { defaultConfig } from '../src/config.ts';
-import { createHost, harness, joinGuest, secret, testConfig, uuid } from './helpers.ts';
+import { createHost, harness, secret, testConfig, uuid } from './helpers.ts';
 import type { Capability } from '../src/application/capability.ts';
 
 /** PR #7 第三轮 review 的 4 项 P2 回归测试。 */

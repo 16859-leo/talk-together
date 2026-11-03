@@ -18,12 +18,13 @@
 
 ```bash
 npm ci --prefix contracts     # 契约依赖
-npm install --prefix backend  # 后端依赖
+npm ci --prefix backend       # 后端依赖
 
 cd backend
 npm run demo   # 端到端演练：28 步，实时打印每个请求与事件
-npm test       # 58 项测试
+npm test       # 197 项离线测试，包含后端与 Agent
 ```
 
-AI 能力当前使用假插件（固定文本、不接模型），用于验证调度与事件逻辑；
-真实选题与话术由 Agent 模块按 `backend/src/application/capability.ts` 的接口提供。
+默认启动和 demo 使用假插件（固定文本、不接模型），用于验证调度与事件逻辑。
+真实选题与话术的 Agent 实现已合入，与应用层共用 `backend/src/application/capability.ts`；
+启用真实模型需显式注入能力并配置环境变量，见 [插件装配说明](backend/src/capabilities/topics/README.md)。
