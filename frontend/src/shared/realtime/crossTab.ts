@@ -81,6 +81,11 @@ export function isSameEpoch(current: RoomEpoch, captured: RoomEpoch): boolean {
   return current.roomId === captured.roomId && current.token === captured.token
 }
 
+/** 卸载时让旧令牌失效：只递增 token 不够，新组件用的是另一个 ref。 */
+export function expireEpoch(current: RoomEpoch): RoomEpoch {
+  return { roomId: '', token: current.token + 1 }
+}
+
 /** 回执里的消息是否属于当前这次入房。 */
 export function belongsToRoom(
   message: MemberMessage,

@@ -31,16 +31,14 @@ export function Composer({ canMention, disabled, cooldownUntil, onSend }: Compos
     const mentions: 'ai'[] = canMention && mentionPicked ? ['ai'] : []
     const pickedMention = mentionPicked
     setSending(true)
+    // 这条草稿已经发出去，提及状态跟着草稿一起结束；
+    // 之后粘贴进来的内容属于新草稿，不能继承这次的 AI 提及
     setValue('')
+    setMentionPicked(false)
     setShowMention(false)
     const ok = await onSend(text, mentions)
     setSending(false)
-    if (ok) {
-      // 只在输入框还空着（没有新草稿）时清提及，
-      // 否则会把用户为下一条消息选的 AI 一起清掉
-      if ((inputRef.current?.value ?? '').trim().length === 0) setMentionPicked(false)
-      return
-    }
+    if (ok) return
     // 失败时只在输入框还空着的时候补回原文；用户已经在写下一句就别覆盖
     const current = inputRef.current?.value ?? ''
     const restore = current.trim().length === 0

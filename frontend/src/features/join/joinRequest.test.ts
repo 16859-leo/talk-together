@@ -65,6 +65,8 @@ describe('pending 复用规则', () => {
     expect(isDefinitiveFailure('VALIDATION_ERROR')).toBe(true)
     expect(isDefinitiveFailure('ROOM_FULL')).toBe(true)
     expect(isDefinitiveFailure('BOOTSTRAP_CONFLICT')).toBe(false)
+    // 网络失败时请求可能已经被受理，pending 必须留着
+    expect(isDefinitiveFailure('NETWORK')).toBe(false)
     expect(isDefinitiveFailure('SERVICE_UNAVAILABLE')).toBe(false)
     expect(isDefinitiveFailure(undefined)).toBe(false)
   })

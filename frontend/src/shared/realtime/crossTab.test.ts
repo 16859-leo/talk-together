@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canReuseRequestId, crossTabAction, isSameEpoch } from './crossTab'
+import { canReuseRequestId, crossTabAction, expireEpoch, isSameEpoch } from './crossTab'
 
 describe('跨标签页动作', () => {
   it('left 只结束本次入房，closed 才清身份', () => {
@@ -34,5 +34,11 @@ describe('房间上下文令牌', () => {
     expect(isSameEpoch({ roomId: 'room_a', token: 1 }, epoch)).toBe(true)
     expect(isSameEpoch({ roomId: 'room_a', token: 2 }, epoch)).toBe(false)
     expect(isSameEpoch({ roomId: 'room_b', token: 1 }, epoch)).toBe(false)
+  })
+
+  it('卸载时旧令牌失效，即使回到同一个房间也不匹配', () => {
+    const expired = expireEpoch(epoch)
+    expect(isSameEpoch(expired, epoch)).toBe(false)
+    expect(expired.roomId).toBe('')
   })
 })

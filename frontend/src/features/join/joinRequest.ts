@@ -68,5 +68,7 @@ export function canReplayPending(
  */
 export function isDefinitiveFailure(code: string | undefined): boolean {
   if (!code) return false
-  return code !== 'BOOTSTRAP_CONFLICT' && code !== 'SERVICE_UNAVAILABLE' && code !== 'INTERNAL_ERROR'
+  // 这几个都代表「结果未知」：请求可能已经被服务端受理，pending 必须留着
+  const unknown = new Set(['BOOTSTRAP_CONFLICT', 'SERVICE_UNAVAILABLE', 'INTERNAL_ERROR', 'NETWORK'])
+  return !unknown.has(code)
 }

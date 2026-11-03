@@ -23,6 +23,7 @@ import {
   savePendingJoin,
   saveSession,
   withJoinLock,
+  type PendingJoin,
   type RoomSession,
 } from '../state/session'
 
@@ -48,6 +49,8 @@ export default function JoinPage() {
   const [staleSession, setStaleSession] = useState<RoomSession | null>(null)
   /** 上一次入房可能已被服务端受理：允许显式放弃 */
   const [conflict, setConflict] = useState(false)
+  /** 上一次入房结果未知、且这次资料不同：先确认原请求，不要自动覆盖 */
+  const [pendingBlock, setPendingBlock] = useState<PendingJoin | null>(null)
   const [lastValues, setLastValues] = useState<JoinValues | null>(null)
 
   const inviteCode = search.get('inviteCode') ?? ''
@@ -86,10 +89,14 @@ export default function JoinPage() {
           return
         }
 
-        // 只有「上一次结果未知 + 内容完全一致」才重放同一份请求，避免旧资料覆盖新修改
+        // 上一次结果未知时，不能用新资料覆盖原请求：先让用户确认原请求的结果
         const stored = loadPendingJoin(roomId)
         const replay = canReplayPending(stored, values, inviteCode)
-        if (stored && !replay) clearPendingJoin(roomId)
+        if (stored && !replay) {
+          setPendingBlock(stored)
+          setError('上一次入房还在确认中，先用原资料确认结果')
+          return
+        }
 
         const bootstrap = loadBootstrap(roomId)
         const body = replay && stored
@@ -221,7 +228,40 @@ export default function JoinPage() {
         </section>
 
         <section>
-          {conflict ? (
+          {pendingBlock ? (
+            <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
+              <h2 className="text-[17px] font-bold text-[#33291d]">上一次入房还在确认中</h2>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                上次提交的「{pendingBlock.profile.nickname}」还没拿到结果。先用同一份资料确认一次；
+                如果确实没进去，再放弃它、用现在的资料重新入房。
+              </p>
+              <div className="mt-5 flex flex-wrap justify-center gap-2.5">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => void handleSubmit(pendingBlock.profile)}
+                  className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
+                >
+                  {submitting ? '确认中…' : '用原资料重试'}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    clearPendingJoin(roomId)
+                    clearBootstrap(roomId)
+                    setPendingBlock(null)
+                    const next = lastValues ?? pendingBlock.profile
+                    void handleSubmit(next)
+                  }}
+                  className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-2.5 text-[13px] text-ink-2 disabled:opacity-60"
+                >
+                  放弃原请求
+                </button>
+              </div>
+              {error && <p className="mt-3 text-[11.5px] text-brick">{error}</p>}
+            </div>
+          ) : conflict ? (
             <div className="rounded-[34px] border-[1.5px] border-rule bg-paper px-8 py-9 text-center shadow-[0_26px_50px_-30px_rgba(92,64,51,.45)]">
               <h2 className="text-[17px] font-bold text-[#33291d]">上一次入房可能已经成功</h2>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">

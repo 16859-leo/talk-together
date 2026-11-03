@@ -29,6 +29,7 @@ import {
 import {
   canReuseRequestId,
   crossTabAction,
+  expireEpoch,
   isSameEpoch,
   openRoomChannel,
   type CrossTabEvent,
@@ -96,6 +97,8 @@ export default function RoomPage() {
     setNotice(null)
     setTerminal(false)
     return () => {
+      // 卸载后旧回执必须失效：新组件用的是另一个 ref，只递增 token 不够
+      epochRef.current = expireEpoch(epochRef.current)
       dispatch({ type: 'reset' })
     }
   }, [roomId])
@@ -388,6 +391,8 @@ export default function RoomPage() {
       }
       return true
     } catch (error) {
+      // 已经切走房间：失败回执也不能影响当前房间（提示、重试状态、终态都不行）
+      if (!isSameEpoch(epochRef.current, capturedEpoch)) return false
       if (!(error instanceof ApiError)) {
         setNotice('发送失败，稍后再试')
         return false
