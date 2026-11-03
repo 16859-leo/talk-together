@@ -24,6 +24,7 @@
   --color-rule-soft: rgba(139, 115, 85, 0.12);
 
   --font-sans: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
   --font-mono: ui-monospace, "Cascadia Mono", monospace;
 
   --radius-card: 36px;
@@ -61,6 +62,16 @@
   ::selection {
     background: rgba(124, 185, 168, 0.35);
   }
+
+  :where(a, button, input, textarea, select):focus-visible {
+    outline: 2px solid #3f6f62;
+    outline-offset: 3px;
+  }
+
+  input,
+  textarea {
+    caret-color: #3f7f70;
+  }
 }
 
 /* 页面背景：天空 → 奶油 → 蜜桃 */
@@ -93,6 +104,183 @@
   border: 0;
 }
 
+/* 首页：全屏开场。内容一次性分层进场，之后保持安静。 */
+.hero-glow {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 1;
+  background: radial-gradient(
+    ellipse 60% 52% at 50% 46%,
+    rgba(255, 253, 247, 0.48) 0%,
+    rgba(255, 253, 247, 0) 72%
+  );
+  animation: hero-glow-in 1400ms ease-out both;
+}
+
+.hero-blob {
+  position: absolute;
+  display: block;
+  opacity: 1;
+  pointer-events: none;
+  animation: hero-blob-in 1500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.hero-blob--sand {
+  --r: 12deg;
+  top: -24%;
+  right: -12%;
+  width: clamp(480px, 56vw, 820px);
+  aspect-ratio: 1;
+  background: rgba(237, 199, 149, 0.55);
+  border-radius: 46% 54% 62% 38% / 56% 44% 56% 44%;
+  animation-delay: 40ms;
+}
+
+.hero-blob--sky {
+  --r: -7deg;
+  bottom: -30%;
+  left: -15%;
+  width: clamp(420px, 48vw, 720px);
+  aspect-ratio: 1;
+  background: rgba(166, 220, 209, 0.42);
+  border-radius: 58% 42% 46% 54% / 44% 58% 42% 56%;
+  animation-delay: 120ms;
+}
+
+.hero-stage {
+  animation: hero-stage-in 1000ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.desc-break {
+  display: none;
+}
+
+@media (max-width: 369px) {
+  .desc-break {
+    display: inline;
+  }
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.7rem, min(13vw, 14vh), 6rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: 0.012em;
+  color: var(--color-ink);
+}
+
+.hero-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
+}
+
+.hero-line > span {
+  display: inline-block;
+  animation: hero-line-rise 950ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero-line:nth-child(1) > span {
+  animation-delay: 120ms;
+}
+
+.hero-line:nth-child(2) > span {
+  animation-delay: 220ms;
+}
+
+.hero-accent {
+  position: relative;
+  display: inline-block;
+  color: #3f6f62;
+}
+
+.hero-accent path {
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: hero-underline 900ms cubic-bezier(0.4, 0, 0.2, 1) 850ms forwards;
+}
+
+.hero-enter {
+  animation: hero-rise 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.hero-enter--head {
+  animation-delay: 80ms;
+}
+
+.hero-enter--desc {
+  animation-delay: 440ms;
+}
+
+.hero-enter--cta {
+  animation-delay: 560ms;
+}
+
+.hero-enter--foot {
+  animation-delay: 700ms;
+}
+
+@keyframes hero-stage-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes hero-line-rise {
+  from {
+    transform: translateY(112%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-blob-in {
+  from {
+    opacity: 0;
+    transform: rotate(calc(var(--r) - 3deg)) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--r)) scale(1);
+  }
+}
+
+@keyframes hero-glow-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hero-underline {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 .no-scrollbar {
   scrollbar-width: none;
 }
@@ -105,6 +293,20 @@
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
+  }
+
+  .hero-stage,
+  .hero-enter,
+  .hero-line > span,
+  .hero-blob,
+  .hero-glow {
+    animation: none !important;
+  }
+
+  .hero-accent path {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
   }
 }

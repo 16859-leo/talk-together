@@ -2,32 +2,99 @@ import { Link } from 'react-router-dom'
 
 export default function HomePage() {
   return (
-    <div className="page-bg paper grid min-h-screen place-items-center px-6">
-      <div className="relative z-10 w-full max-w-[520px] rounded-[36px] border-[1.5px] border-rule bg-paper px-9 py-10 text-center shadow-[0_30px_60px_-34px_rgba(92,64,51,.45)]">
-        <div className="mb-3 flex items-center justify-center gap-2.5 text-[22px] font-bold tracking-wide">
-          <span className="h-4 w-4 rounded-full bg-sage" />
-          搭个话
-        </div>
-        <p className="text-[13.5px] leading-relaxed text-ink-2">
-          真人房主主持、AI 帮忙接话的破冰聊天室。
-          <br />
-          最多五个人，坐下就能聊。
-        </p>
-        <div className="mt-7 flex flex-col gap-2.5">
-          <Link
-            to="/join/room_demo"
-            className="rounded-2xl bg-sage-deep px-6 py-3 text-[14px] font-semibold text-white shadow-soft transition-colors hover:bg-[#549c8b]"
-          >
-            用演示房间进去看看
-          </Link>
-          <Link
-            to="/rooms/room_demo"
-            className="rounded-2xl border-[1.5px] border-[rgba(96,166,150,.5)] px-6 py-3 text-[13.5px] text-ink-2 transition-colors hover:bg-card"
-          >
-            直接看房间页（房主视角）
-          </Link>
-        </div>
-        <p className="mt-6 text-[11.5px] text-muted">V0.1 演示 · 后端未接时使用本地快照</p>
+    <div className="page-bg paper relative min-h-screen min-h-[100svh] overflow-hidden">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <span className="hero-glow" />
+        <span className="hero-blob hero-blob--sand" />
+        <span className="hero-blob hero-blob--sky" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex min-h-screen min-h-[100svh] w-full max-w-[1440px] flex-col px-5 py-6 sm:px-8 lg:px-12">
+        <main className="flex flex-1 flex-col items-center justify-center py-10 sm:py-14">
+          <div className="hero-stage w-full text-center">
+            <h1 className="hero-title">
+              <span className="hero-line">
+                <span>talk</span>
+              </span>
+              <span className="hero-line">
+                <span>
+                  <span className="hero-accent">
+                    together
+                    <svg
+                      viewBox="0 0 220 12"
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                      className="absolute -bottom-[0.1em] left-0 h-[0.14em] w-full overflow-visible"
+                    >
+                      <path
+                        d="M3 8 C 46 3, 90 10, 132 6 S 196 3, 217 7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        opacity="0.45"
+                      />
+                    </svg>
+                  </span>
+                </span>
+              </span>
+            </h1>
+
+            <p className="hero-enter hero-enter--desc mx-auto mt-6 max-w-[35rem] text-[16px] leading-[1.85] text-ink-2 text-pretty sm:mt-7 sm:text-[18px]">
+              真人房主主持、AI 帮忙接话的破冰聊天室。
+              <br />
+              最多五个人，围一桌，慢慢聊开。
+            </p>
+
+            <div className="hero-enter hero-enter--cta mt-8 flex flex-col items-center justify-center gap-3 sm:mt-10 sm:flex-row">
+              <Link
+                to="/join/room_demo"
+                className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] bg-[#3f7f70] px-6 text-[15px] font-semibold text-white shadow-[0_14px_26px_-16px_rgba(63,111,98,.8)] transition-[transform,background-color,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:bg-[#356f62] hover:shadow-[0_18px_32px_-16px_rgba(63,111,98,.75)] active:translate-y-0 sm:w-auto sm:min-w-[218px]"
+              >
+                用演示房间进去看看
+                <svg
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                  className="h-[17px] w-[17px] transition-transform duration-300 ease-out group-hover:translate-x-1"
+                >
+                  <path
+                    d="M3.5 10h12M11 5.5l4.5 4.5L11 14.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </Link>
+
+              <Link
+                to="/rooms/room_demo"
+                className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] border-[1.5px] border-[rgba(63,111,98,.34)] bg-[rgba(255,253,247,.52)] px-6 text-[15px] font-medium text-[#4a4135] transition-[transform,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-[rgba(63,111,98,.5)] hover:bg-card active:translate-y-0 sm:w-auto sm:min-w-[232px]"
+              >
+                <svg
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                  className="h-[17px] w-[17px] text-[#557268]"
+                >
+                  <path
+                    d="M1.8 10S4.7 4.8 10 4.8 18.2 10 18.2 10 15.3 15.2 10 15.2 1.8 10 1.8 10Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                  <circle cx="10" cy="10" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+                直接看房间页（房主视角）
+              </Link>
+            </div>
+          </div>
+        </main>
+
+        <footer className="hero-enter hero-enter--foot pb-1 text-center text-[11.5px] leading-relaxed text-ink-2">
+          V0.1 演示 · 后端未接时使用本地快照
+        </footer>
       </div>
     </div>
   )
