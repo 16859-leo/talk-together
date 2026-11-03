@@ -19,7 +19,7 @@ const SUGGESTIONS = ['电影', '旅行', '咖啡', '摄影', '游戏', '烘焙',
 
 export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmit }: JoinFormProps) {
   const [nickname, setNickname] = useState('')
-  const [tags, setTags] = useState<string[]>(['阅读'])
+  const [tags, setTags] = useState<string[]>([])
   const [tagDraft, setTagDraft] = useState('')
   const [bio, setBio] = useState('')
   const [touched, setTouched] = useState(false)
@@ -28,14 +28,28 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
   const tagsTooFew = tags.length < (policy.interestTags.minItems ?? 1)
   const invalid = nicknameTooShort || tagsTooFew
 
+  /**
+   * 标签完全自由：可以点常用词，也可以自己打。
+   * 支持一次粘贴/输入多个（逗号、顿号、空格分隔），并按契约的上限截断。
+   */
   function addTag(raw: string) {
-    const value = raw.trim().replace(/[，,]$/, '')
-    if (!value) return
-    if (tags.includes(value)) {
+    const parts = raw
+      .split(/[,，、\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    if (parts.length === 0) {
       setTagDraft('')
       return
     }
-    setTags((prev) => [...prev, value])
+    setTags((prev) => {
+      const limit = policy.interestTags.maxItems ?? Number.POSITIVE_INFINITY
+      const next = [...prev]
+      for (const part of parts) {
+        if (next.length >= limit) break
+        if (!next.includes(part)) next.push(part)
+      }
+      return next
+    })
     setTagDraft('')
   }
 
@@ -77,7 +91,7 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
         <label className="mb-1.5 flex items-baseline gap-1.5 text-[12.5px] text-muted" htmlFor="tag-draft">
           <b className="text-[13px] font-semibold text-ink">兴趣标签</b>
           <span className="text-[12px] text-brick">必填</span>
-          <span>· 至少一个，用来找共同话题</span>
+          <span>· 至少一个，自己写的也算</span>
         </label>
         <div
           className={`flex min-h-[46px] flex-wrap items-center gap-1.5 rounded-[14px] border-[1.5px] bg-card px-2.5 py-2 transition-shadow focus-within:border-[rgba(96,166,150,.7)] focus-within:shadow-[0_0_0_4px_rgba(124,185,168,.14)] ${
@@ -105,18 +119,33 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
             value={tagDraft}
             onChange={(event) => setTagDraft(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === '，' || event.key === ',') {
+              // 中文输入法选词时的回车不算提交
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter') {
                 event.preventDefault()
                 addTag(tagDraft)
+              } else if (event.key === '，' || event.key === ',') {
+                event.preventDefault()
+                addTag(`${tagDraft}${event.key}`)
               } else if (event.key === 'Backspace' && tagDraft.length === 0 && tags.length > 0) {
                 setTags((prev) => prev.slice(0, -1))
               }
             }}
-            placeholder="输入后回车添加"
-            className="min-w-[110px] flex-1 bg-transparent px-0.5 py-1 text-[13.5px] text-ink-2 outline-none placeholder:text-faint"
+            placeholder="自己写一个，回车添加"
+            className="min-w-[120px] flex-1 bg-transparent px-0.5 py-1 text-[13.5px] text-ink-2 outline-none placeholder:text-faint"
           />
+          {tagDraft.trim().length > 0 && (
+            <button
+              type="button"
+              onClick={() => addTag(tagDraft)}
+              className="shrink-0 rounded-full border border-dashed border-[rgba(96,166,150,.6)] px-2.5 py-0.5 text-[11.5px] text-[#3f6156] transition-colors hover:bg-[rgba(124,185,168,.16)]"
+            >
+              + 添加
+            </button>
+          )}
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-faint">常用</span>
           {SUGGESTIONS.filter((item) => !tags.includes(item)).map((item) => (
             <button
               key={item}
@@ -130,7 +159,7 @@ export function JoinForm({ policy, submitting, serverError, fieldErrors, onSubmi
         </div>
         {touched && tagsTooFew && (
           <p className="mt-1 text-[11.5px] text-brick">
-            {fieldErrors['/profile/interestTags'] ?? '先选一个兴趣，导播好帮你起话题'}
+            {fieldErrors['/profile/interestTags'] ?? '至少填一个兴趣，自己写的也行'}
           </p>
         )}
       </div>
