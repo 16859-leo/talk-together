@@ -1,0 +1,19 @@
+{
+  "name": "@talk-together/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@ai-sdk/deepseek": "^3.0.79",
+    "ai": "^7.0.162",
+    "zod": "^4.6.7"
+  }
+}
