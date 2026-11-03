@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sky: #a6dcd1;
+  --color-mist: #cfe4c6;
+  --color-cream: #f0e2bd;
+  --color-sand: #f4d7a9;
+  --color-dusk: #edc795;
+
+  --color-paper: #faf5eb;
+  --color-card: #fffdf7;
+
+  --color-ink: #3a3226;
+  --color-ink-2: #5a4f42;
+  --color-muted: #7c6b58;
+  --color-faint: #a1907c;
+
+  --color-sage: #7cb9a8;
+  --color-sage-deep: #5fa593;
+  --color-coral: #e8a87c;
+  --color-brick: #b1694a;
+
+  --color-rule: rgba(139, 115, 85, 0.2);
+  --color-rule-soft: rgba(139, 115, 85, 0.12);
+
+  --font-sans: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", monospace;
+
+  --radius-card: 36px;
+  --radius-chip: 14px;
+
+  --shadow-soft: 0 2px 8px rgba(124, 185, 168, 0.15);
+  --shadow-lift: 0 12px 28px rgba(124, 185, 168, 0.28);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-cream);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: rgba(124, 185, 168, 0.35);
+  }
+}
+
+/* 页面背景：天空 → 奶油 → 蜜桃 */
+.page-bg {
+  background: linear-gradient(
+    180deg,
+    #a6dcd1 0%,
+    #cfe4c6 26%,
+    #f0e2bd 58%,
+    #f4d7a9 84%,
+    #edc795 100%
+  );
+}
+
+/* 纸纹：极淡的噪点 */
+.paper::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E");
+}
+
+.rule {
+  height: 1px;
+  background: var(--color-rule);
+  border: 0;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

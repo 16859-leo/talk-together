@@ -41,3 +41,6 @@ dist/
 
 # Harness scratch files
 .dsh-acl-reports/
+
+# TypeScript build info
+*.tsbuildinfo
