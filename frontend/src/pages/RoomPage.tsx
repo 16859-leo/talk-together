@@ -51,6 +51,13 @@ export default function RoomPage() {
     }
   }, [state.ready])
 
+  // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
+  useEffect(() => {
+    if (!state.closed) return
+    clearSession(roomId)
+    setEnded({ title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' })
+  }, [state.closed, roomId])
+
   // 恢复身份：凭证还有效就继续，入房已结束就给出终态。
   useEffect(() => {
     if (!session) return undefined
