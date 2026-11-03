@@ -28,17 +28,22 @@ export function Composer({ canMention, disabled, cooldownUntil, onSend }: Compos
   async function submit() {
     const text = value.trim()
     if (!text || disabled || sending || cooling) return
+    const mentions: 'ai'[] = canMention && mentionPicked ? ['ai'] : []
+    const pickedMention = mentionPicked
     setSending(true)
     setValue('')
     setShowMention(false)
-    const ok = await onSend(text, canMention && mentionPicked ? ['ai'] : [])
+    const ok = await onSend(text, mentions)
     setSending(false)
-    setMentionPicked(false)
-    if (!ok) {
-      // 失败时只补回原文；如果用户已经在写下一句，就别覆盖他的草稿
-      setValue((current) => (current.trim().length === 0 ? text : current))
-      inputRef.current?.focus()
+    if (ok) {
+      setMentionPicked(false)
+      return
     }
+    // 失败时只补回原文；如果用户已经在写下一句，就别覆盖他的草稿
+    setValue((current) => (current.trim().length === 0 ? text : current))
+    // 提及也一起还原，否则重试会复用同一个请求 ID 却换了请求体
+    if (pickedMention) setMentionPicked(true)
+    inputRef.current?.focus()
   }
 
   function pickMention() {
@@ -68,7 +73,11 @@ export function Composer({ canMention, disabled, cooldownUntil, onSend }: Compos
           ref={inputRef}
           value={value}
           disabled={disabled || cooling}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value
+            setValue(next)
+            if (mentionPicked && !next.includes('@AI')) setMentionPicked(false)
+          }}
           onKeyDown={(event) => {
             // 中文输入法选词时的回车不算发送
             if (event.nativeEvent.isComposing) return

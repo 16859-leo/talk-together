@@ -12,6 +12,7 @@ import {
   loadBootstrap,
   loadSession,
   saveSession,
+  withJoinLock,
   type RoomSession,
 } from '../state/session'
 
@@ -60,42 +61,66 @@ export default function JoinPage() {
     setError(null)
     setFieldErrors({})
 
-    // 别的标签页可能已经先加入了：复用那个身份，别再匿名开一个；
-    // 如果只是 membership 结束但凭证还在，就用原身份重新加入
-    const saved = loadSession(roomId)
-    if (saved?.membershipId) {
-      navigate(`/rooms/${roomId}`, { replace: true })
-      return
-    }
-
-    const bootstrap = loadBootstrap(roomId)
     try {
-      const data = await joinRoom(roomId, {
-        clientRequestId: saved ? crypto.randomUUID() : bootstrap.clientRequestId,
-        bootstrapToken: saved ? undefined : bootstrap.token,
-        inviteCode,
-        profile: {
+      // 同一房间的入房提交跨标签页串行：后提交的标签页在锁内会看到前一个的结果
+      await withJoinLock(roomId, async () => {
+        const saved = loadSession(roomId)
+        // 别人已经建好身份了就直接复用；只有凭证、没有 membership 时走原身份重新加入
+        if (saved?.membershipId) {
+          navigate(`/rooms/${roomId}`, { replace: true })
+          return
+        }
+
+        const bootstrap = loadBootstrap(roomId)
+        let data
+        try {
+          data = await joinRoom(
+            roomId,
+            {
+              clientRequestId: saved ? crypto.randomUUID() : bootstrap.clientRequestId,
+              bootstrapToken: saved ? undefined : bootstrap.token,
+              inviteCode,
+              profile: {
+                nickname: values.nickname,
+                interestTags: values.interestTags,
+                bio: values.bio,
+              },
+            },
+            saved ? { credential: saved.credential } : undefined,
+          )
+        } catch (caught) {
+          // 另一个标签页刚用同一份 bootstrap 成功：直接采用它的结果，别再匿名新建
+          if (caught instanceof ApiError && caught.code === 'BOOTSTRAP_CONFLICT') {
+            const again = loadSession(roomId)
+            if (again?.membershipId) {
+              navigate(`/rooms/${roomId}`, { replace: true })
+              return
+            }
+          }
+          throw caught
+        }
+
+        const membership = data.member.membership
+        if (!membership) {
+          throw new ApiError({
+            code: 'MEMBERSHIP_INACTIVE',
+            status: 403,
+            message: '这次入房没有生效',
+          })
+        }
+
+        saveSession(roomId, {
+          credential: data.memberCredential,
+          membershipId: membership.id,
+          memberId: data.member.id,
           nickname: values.nickname,
           interestTags: values.interestTags,
-          bio: values.bio,
-        },
-      }, saved ? { credential: saved.credential } : undefined)
-
-      const membership = data.member.membership
-      if (!membership) {
-        throw new ApiError({ code: 'MEMBERSHIP_INACTIVE', status: 403, message: '这次入房没有生效' })
-      }
-
-      saveSession(roomId, {
-        credential: data.memberCredential,
-        membershipId: membership.id,
-        memberId: data.member.id,
-        nickname: values.nickname,
-        interestTags: values.interestTags,
-        role: data.member.role,
+          role: data.member.role,
+          joinPath: data.room.invitation.joinPath,
+        })
+        clearBootstrap(roomId)
+        navigate(`/rooms/${roomId}`, { replace: true })
       })
-      clearBootstrap(roomId)
-      navigate(`/rooms/${roomId}`, { replace: true })
     } catch (caught) {
       if (caught instanceof ApiError) {
         if (caught.code === 'BOOTSTRAP_CONFLICT') {

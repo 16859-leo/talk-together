@@ -12,7 +12,14 @@ import type { ActiveMember, MemberMessage, ValidationPolicy } from '../shared/ap
 import { openRoomStream, type StreamStatus } from '../shared/realtime/connection'
 import { demoCursor, demoSnapshot } from '../state/demo'
 import { applyServerMessage, dispatch, useRoomState } from '../state/roomStore'
-import { clearSession, devSession, loadSession, saveSession, type RoomSession } from '../state/session'
+import {
+    clearMembership,
+    clearSession,
+    devSession,
+    loadSession,
+    saveSession,
+    type RoomSession,
+  } from '../state/session'
 import { formatLeft, useNow } from '../shared/ui/useNow'
 
 const FALLBACK_POLICY: ValidationPolicy = {
@@ -60,6 +67,8 @@ export default function RoomPage() {
   const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
   /** 限频冷却截止时间，交给 Composer 倒计时并禁用发送 */
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
+  /** 进入终态后不再建连、不再归并事件 */
+  const [terminal, setTerminal] = useState(false)
   const pendingSend = useRef<{ id: string; text: string } | null>(null)
   const channelRef = useRef<BroadcastChannel | null>(null)
 
@@ -202,7 +211,11 @@ export default function RoomPage() {
   // 本人的 membership 结束（被移出 / 主动退出）同样要切终态
   useEffect(() => {
     if (!state.selfEnded) return
-    clearSession(roomId)
+    setTerminal(true)
+    if (state.selfEnded === 'removed') clearSession(roomId)
+    else clearMembership(roomId)
+    setSession(null)
+    dispatch({ type: 'reset' })
     setEnded(
       state.selfEnded === 'removed' ? END_TEXT.MEMBER_REMOVED : END_TEXT.MEMBERSHIP_INACTIVE,
     )
@@ -211,7 +224,10 @@ export default function RoomPage() {
   // room.closed 是本次连接的最后一个业务事件：直接切终态并清凭证。
   useEffect(() => {
     if (!state.closed) return
+    setTerminal(true)
     clearSession(roomId)
+    setSession(null)
+    dispatch({ type: 'reset' })
     setEnded({ title: '房间已经关闭', detail: '房主关掉了房间，聊天和资料都不会保留。' })
   }, [state.closed, roomId])
 
@@ -224,9 +240,10 @@ export default function RoomPage() {
         if (!alive) return
         if (!data.member.membership) {
           // 成员凭证仍然有效，只是这次入房结束了：保留身份，支持原身份重新加入
-          const endedSession = { ...session, membershipId: undefined }
-          saveSession(roomId, endedSession)
-          setSession(endedSession)
+          clearMembership(roomId)
+          setTerminal(true)
+          setSession(null)
+          dispatch({ type: 'reset' })
           setEnded(END_TEXT.MEMBERSHIP_INACTIVE)
         }
       })
@@ -245,7 +262,7 @@ export default function RoomPage() {
 
   // 领票 → 建连 → 首帧快照 → 事件流。
   useEffect(() => {
-    if (!activeSession) return undefined
+    if (!activeSession || terminal) return undefined
     const controller = new AbortController()
     const close = openRoomStream({
       roomId: roomId || 'room_demo',
@@ -259,18 +276,25 @@ export default function RoomPage() {
       onMessage: applyServerMessage,
       onFatal: (error) => {
         const text = END_TEXT[error.code]
-        if (text) {
+        if (!text) return
+        setTerminal(true)
+        // 身份凭证仍然有效的，只结束这次入房，保留可复用的身份
+        if (error.code === 'MEMBER_CREDENTIAL_INVALID' || error.code === 'ROOM_UNAVAILABLE') {
           clearSession(roomId)
-          setEnded(text)
+        } else {
+          clearMembership(roomId)
         }
+        setSession(null)
+        dispatch({ type: 'reset' })
+        setEnded(text)
       },
     })
     return () => {
       controller.abort()
       close()
     }
-    // 改昵称不应该重建连接，只跟凭证走
-  }, [roomId, session?.credential, session?.membershipId])
+    // 改昵称不应该重建连接，只跟凭证和终态走
+  }, [roomId, session?.credential, session?.membershipId, terminal])
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -280,6 +304,16 @@ export default function RoomPage() {
     document.addEventListener('click', onDocClick)
     return () => document.removeEventListener('click', onDocClick)
   }, [menuOpen])
+
+  // 快照带了邀请地址就补进会话，重新加入时不会缺 inviteCode
+  useEffect(() => {
+    if (terminal) return
+    const joinPath = state.room?.invitation.joinPath
+    if (!session || !joinPath || session.joinPath === joinPath) return
+    const next = { ...session, joinPath }
+    saveSession(roomId, next)
+    setSession(next)
+  }, [state.room?.invitation.joinPath, session, roomId])
 
   const self = state.self
   const selfMember = useMemo(
@@ -379,10 +413,17 @@ export default function RoomPage() {
       const retryable = error.status === 429 || error.status >= 500
       pendingSend.current = retryable ? { id: clientRequestId, text } : null
 
-      const terminal = END_TEXT[error.code]
-      if (terminal) {
-        clearSession(roomId)
-        setEnded(terminal)
+      const terminalText = END_TEXT[error.code]
+      if (terminalText) {
+        setTerminal(true)
+        if (error.code === 'MEMBER_CREDENTIAL_INVALID' || error.code === 'ROOM_UNAVAILABLE') {
+          clearSession(roomId)
+        } else {
+          clearMembership(roomId)
+        }
+        setSession(null)
+        dispatch({ type: 'reset' })
+        setEnded(terminalText)
         return false
       }
 
@@ -416,7 +457,8 @@ export default function RoomPage() {
       }
     }
     setLeaveOpen(false)
-    clearSession(roomId)
+    if (canMention) clearSession(roomId)
+    else clearMembership(roomId)
     channelRef.current?.postMessage({ type: canMention ? 'closed' : 'left' })
     navigate('/')
   }
@@ -503,7 +545,7 @@ export default function RoomPage() {
   }
 
   // 没有凭证又直接打开了房间地址：给一个明确出口，别停在加载页
-  if (!session) {
+  if (!session && !ended) {
     return (
       <div className="page-bg paper grid min-h-screen place-items-center px-6">
         <div className="relative z-10 w-full max-w-[440px] rounded-[32px] border-[1.5px] border-rule bg-paper px-8 py-10 text-center shadow-[0_30px_60px_-34px_rgba(92,64,51,.45)]">
@@ -546,10 +588,12 @@ export default function RoomPage() {
             >
               回到首页
             </button>
-            {!session?.membershipId && (
+            {session && !session.membershipId && (
               <button
                 type="button"
-                onClick={() => navigate(`/join/${roomId}`)}
+                onClick={() =>
+                  navigate(session?.joinPath ?? state.room?.invitation.joinPath ?? `/join/${roomId}`)
+                }
                 className="rounded-2xl bg-sage-deep px-6 py-2.5 text-[13px] font-semibold text-white"
               >
                 用原身份重新加入

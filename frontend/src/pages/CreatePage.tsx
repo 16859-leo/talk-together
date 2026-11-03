@@ -66,6 +66,7 @@ export default function CreatePage() {
         nickname: values.nickname,
         interestTags: values.interestTags,
         role: data.member.role,
+        joinPath: data.room.invitation.joinPath,
       })
       clearBootstrap('create')
       navigate(`/rooms/${data.room.id}`, { replace: true })

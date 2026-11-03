@@ -24,12 +24,15 @@ function aiStateNote(message: Extract<Message, { kind: 'ai' }>): string | null {
 
 export function ChatFeed({ messages }: ChatFeedProps) {
   const scrollerRef = useRef<HTMLDivElement>(null)
+  /** 用户是否还贴着底部：贴着就继续跟随，翻上去看历史时不要把他拽回来 */
+  const pinnedRef = useRef(true)
 
-  // 新消息进来时贴到底部；历史消息仍可向上滚动查看
+  // 新消息、以及流式回复变长都会换掉 messages 数组，这里统一跟随
   useEffect(() => {
     const node = scrollerRef.current
-    if (node) node.scrollTop = node.scrollHeight
-  }, [messages.length, messages[messages.length - 1]?.id])
+    if (!node || !pinnedRef.current) return
+    node.scrollTop = node.scrollHeight
+  }, [messages])
 
   if (messages.length === 0) {
     return (
@@ -45,6 +48,10 @@ export function ChatFeed({ messages }: ChatFeedProps) {
   return (
     <div
       ref={scrollerRef}
+      onScroll={(event) => {
+        const node = event.currentTarget
+        pinnedRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48
+      }}
       className="min-h-0 flex-1 overflow-y-auto pb-1 no-scrollbar"
     >
       <div className="flex min-h-full flex-col justify-end gap-2.5">
