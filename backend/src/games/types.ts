@@ -19,6 +19,10 @@ export interface GameHostState {
   readonly totalRounds: number
   /** 这一局抽到的暗牌（只有「二十问」这类玩法有）；每轮都带给模型，别让它中途换答案。 */
   readonly secret?: string
+  /** 收尾原因：有人猜中（自动收尾）还是房主手动结束。 */
+  readonly endReason?: 'guessed' | 'manual'
+  /** 猜中的成员昵称，收尾时用来点名。 */
+  readonly guesserName?: string
 }
 
 export interface GamePlugin {

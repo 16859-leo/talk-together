@@ -5,6 +5,8 @@ interface GameShelfProps {
   active: ActiveGame | null
   /** 发送中或房间已关闭时禁用 */
   disabled: boolean
+  /** AI 正在生成：别再让房主连点下一轮，避免一口气推进好几轮 */
+  busy?: boolean
   onStart: (game: GameDefinition) => void
   onNext: (game: GameDefinition) => void
   onStop: (game: GameDefinition) => void
@@ -19,7 +21,7 @@ interface GameShelfProps {
  * 默认收起：六个游戏铺开会把右侧栏占满，盖过房间和成员信息。
  * 点标题展开选游戏；选中后自动收起，只留一张紧凑的「进行中」卡片（下一轮/结束）。
  */
-export function GameShelf({ active, disabled, onStart, onNext, onStop }: GameShelfProps) {
+export function GameShelf({ active, disabled, busy = false, onStart, onNext, onStop }: GameShelfProps) {
   const [expanded, setExpanded] = useState(false)
   const current = active === null ? null : findGame(active.gameId)
   const listId = 'game-shelf-list'
@@ -49,21 +51,23 @@ export function GameShelf({ active, disabled, onStart, onNext, onStop }: GameShe
         </span>
       </button>
 
-      {current !== null && (
+      {current !== null && active !== null && (
         <div className="rounded-2xl border border-[rgba(124,185,168,.4)] bg-[rgba(124,185,168,.10)] px-3 py-2.5">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-[#3f6156]">
             <span className="text-[15px]">{current.emoji}</span>
             {current.name}
-            <span className="text-[11.5px] font-normal text-muted">进行中</span>
+            <span className="text-[11.5px] font-normal text-muted">
+              进行中 · 第 {Math.min(active.round, current.totalRounds)}/{current.totalRounds} 轮
+            </span>
           </p>
           <div className="mt-2 flex gap-1.5">
             <button
               type="button"
-              disabled={disabled}
+              disabled={disabled || busy}
               onClick={() => onNext(current)}
               className="flex-1 rounded-xl bg-sage-deep px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#549c8b] disabled:opacity-50"
             >
-              {current.nextLabel}
+              {busy ? '生成中…' : current.nextLabel}
             </button>
             <button
               type="button"
@@ -88,7 +92,7 @@ export function GameShelf({ active, disabled, onStart, onNext, onStop }: GameShe
               <button
                 key={game.id}
                 type="button"
-                disabled={disabled}
+                disabled={disabled || busy}
                 aria-current={isActive ? 'true' : undefined}
                 onClick={() => {
                   setExpanded(false)

@@ -95,8 +95,30 @@ export function findGame(id: string): GameDefinition | null {
   return GAMES.find((game) => game.id === id) ?? null
 }
 
+/** 所有按钮会发出的指令文本；这些消息属于操作，不算聊天内容。 */
+const COMMAND_TEXTS: ReadonlySet<string> = new Set(
+  GAMES.flatMap((game) => [game.startText, game.nextText, game.stopText]).map((text) =>
+    text.trim(),
+  ),
+)
+
+/** 聊天记录里要把按钮指令藏起来，避免「@AI 下一问」这种操作刷屏。 */
+export function isGameCommandText(text: string): boolean {
+  return COMMAND_TEXTS.has(text.trim())
+}
+
+/**
+ * 游戏自动收尾的识别：二十问猜中时，插件要求 AI 以「猜对了」开头。
+ * 用来把房主的「进行中」卡片收起来，不然游戏已经结束、按钮还挂着。
+ */
+export function isGuessedEnding(text: string): boolean {
+  return /^\s*猜对了/.test(text)
+}
+
 export interface ActiveGame {
   readonly gameId: string
+  /** 房主视角的当前轮次；用于按钮上显示「第 2/5 轮」，刷新后按会话存储恢复 */
+  readonly round: number
 }
 
 const storageKey = (roomId: string): string => `talk-together.game.${roomId}`
@@ -110,10 +132,13 @@ export function loadActiveGame(
   try {
     const raw = storage.getItem(storageKey(roomId))
     if (raw === null) return null
-    const parsed = JSON.parse(raw) as { gameId?: unknown }
-    return typeof parsed.gameId === 'string' && findGame(parsed.gameId) !== null
-      ? { gameId: parsed.gameId }
-      : null
+    const parsed = JSON.parse(raw) as { gameId?: unknown; round?: unknown }
+    if (typeof parsed.gameId !== 'string' || findGame(parsed.gameId) === null) return null
+    const round =
+      typeof parsed.round === 'number' && Number.isInteger(parsed.round) && parsed.round > 0
+        ? parsed.round
+        : 1
+    return { gameId: parsed.gameId, round }
   } catch {
     return null
   }

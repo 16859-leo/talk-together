@@ -7,6 +7,8 @@ import { TopicSuggestionBar } from '../features/chat/TopicSuggestionBar'
 import { splitFeeds } from '../features/chat/topicSuggestion'
 import { GameShelf } from '../features/games/GameShelf'
 import {
+  isGameCommandText,
+  isGuessedEnding,
   loadActiveGame,
   saveActiveGame,
   type ActiveGame,
@@ -116,6 +118,16 @@ export default function RoomPage() {
       dispatch({ type: 'reset' })
     }
   }, [roomId])
+
+  // 二十问猜中后 AI 会自动收尾：把「进行中」卡片收起来，别让按钮挂在一局已结束的游戏上。
+  useEffect(() => {
+    if (activeGame === null) return
+    const lastAi = [...state.messages].reverse().find((message) => message.kind === 'ai')
+    if (lastAi !== undefined && lastAi.kind === 'ai' && isGuessedEnding(lastAi.text)) {
+      setActiveGame(null)
+      saveActiveGame(roomId, null)
+    }
+  }, [state.messages, activeGame, roomId])
 
   /** 只有 membership 还在，才谈得上调用房间级接口 */
   const activeSession =
@@ -358,7 +370,11 @@ export default function RoomPage() {
   const runningInvocation = state.invocations.find((item) => item.status === 'running')
   const queuedCount = state.invocations.filter((item) => item.status === 'queued').length
   // 冷场自动补的话题不进聊天记录，单独一条实时建议显示在输入框上方。
-  const { chat: chatMessages, suggestion } = splitFeeds(state.messages, state.invocations)
+  const { chat, suggestion } = splitFeeds(state.messages, state.invocations)
+  // 房主点游戏按钮产生的指令（「@AI 下一问」等）是操作，不当作聊天内容展示。
+  const chatMessages = chat.filter(
+    (message) => !(message.kind === 'member' && isGameCommandText(message.text)),
+  )
   const visibleSuggestion =
     suggestion !== null && suggestion.replyId !== dismissedSuggestionId ? suggestion : null
 
@@ -465,15 +481,23 @@ export default function RoomPage() {
   }
 
   // 游戏按钮就是替房主发一条 @AI 的话；轮次推进由后端按文本识别，前端只记开没开。
-  async function startGame(game: GameDefinition): Promise<void> {    const ok = await handleSend(game.startText, ['ai'])
+  async function startGame(game: GameDefinition): Promise<void> {
+    const ok = await handleSend(game.startText, ['ai'])
     if (!ok) return
-    const next: ActiveGame = { gameId: game.id }
+    const next: ActiveGame = { gameId: game.id, round: 1 }
     setActiveGame(next)
     saveActiveGame(roomId, next)
   }
 
   async function advanceGame(game: GameDefinition): Promise<void> {
-    await handleSend(game.nextText, ['ai'])
+    const ok = await handleSend(game.nextText, ['ai'])
+    if (!ok || activeGame === null) return
+    const next: ActiveGame = {
+      gameId: activeGame.gameId,
+      round: Math.min(activeGame.round + 1, game.totalRounds),
+    }
+    setActiveGame(next)
+    saveActiveGame(roomId, next)
   }
 
   async function stopGame(game: GameDefinition): Promise<void> {
@@ -801,6 +825,7 @@ export default function RoomPage() {
               <GameShelf
                 active={activeGame}
                 disabled={composerDisabled}
+                busy={runningInvocation !== undefined}
                 onStart={(game) => {
                   void startGame(game)
                 }}

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { GAMES, findGame, loadActiveGame, saveActiveGame } from './catalog'
+import {
+  GAMES,
+  findGame,
+  isGameCommandText,
+  isGuessedEnding,
+  loadActiveGame,
+  saveActiveGame,
+} from './catalog'
 
 function memoryStorage() {
   const map = new Map<string, string>()
@@ -42,11 +49,30 @@ describe('游戏目录', () => {
   })
 })
 
+describe('按钮指令与聊天内容', () => {
+  it('按钮发出的指令按「操作」处理，普通聊天不会', () => {
+    for (const game of GAMES) {
+      expect(isGameCommandText(game.startText)).toBe(true)
+      expect(isGameCommandText(game.nextText)).toBe(true)
+      expect(isGameCommandText(game.stopText)).toBe(true)
+    }
+    expect(isGameCommandText('@AI 帮我找个话题')).toBe(false)
+    expect(isGameCommandText('小美最近在忙什么')).toBe(false)
+  })
+
+  it('只有二十问的「猜对了」收尾才把进行中卡片收起来', () => {
+    expect(isGuessedEnding('猜对了！答案是千与千寻。')).toBe(true)
+    expect(isGuessedEnding(' 猜对了，就是它。')).toBe(true)
+    expect(isGuessedEnding('时间到，答案是千与千寻。')).toBe(false)
+    expect(isGuessedEnding('')).toBe(false)
+  })
+})
+
 describe('房主的游戏状态（按房间存会话存储）', () => {
-  it('保存后读回同一局；清掉后为空', () => {
+  it('保存后读回同一局（含轮次）；清掉后为空', () => {
     const storage = memoryStorage()
-    saveActiveGame('room_1', { gameId: 'this-or-that' }, storage)
-    expect(loadActiveGame('room_1', storage)).toEqual({ gameId: 'this-or-that' })
+    saveActiveGame('room_1', { gameId: 'this-or-that', round: 3 }, storage)
+    expect(loadActiveGame('room_1', storage)).toEqual({ gameId: 'this-or-that', round: 3 })
 
     saveActiveGame('room_1', null, storage)
     expect(loadActiveGame('room_1', storage)).toBeNull()
@@ -54,7 +80,7 @@ describe('房主的游戏状态（按房间存会话存储）', () => {
 
   it('不同房间互不影响', () => {
     const storage = memoryStorage()
-    saveActiveGame('room_1', { gameId: 'this-or-that' }, storage)
+    saveActiveGame('room_1', { gameId: 'this-or-that', round: 1 }, storage)
     expect(loadActiveGame('room_2', storage)).toBeNull()
   })
 
@@ -67,9 +93,21 @@ describe('房主的游戏状态（按房间存会话存储）', () => {
     expect(loadActiveGame('room_2', storage)).toBeNull()
   })
 
+  it('旧数据没有轮次或轮次非法时按第 1 轮处理', () => {
+    const storage = memoryStorage()
+    storage.setItem('talk-together.game.room_1', JSON.stringify({ gameId: 'this-or-that' }))
+    expect(loadActiveGame('room_1', storage)).toEqual({ gameId: 'this-or-that', round: 1 })
+
+    storage.setItem(
+      'talk-together.game.room_2',
+      JSON.stringify({ gameId: 'this-or-that', round: -2 }),
+    )
+    expect(loadActiveGame('room_2', storage)).toEqual({ gameId: 'this-or-that', round: 1 })
+  })
+
   it('没有房间 id 时不读写', () => {
     const storage = memoryStorage()
-    saveActiveGame('', { gameId: 'this-or-that' }, storage)
+    saveActiveGame('', { gameId: 'this-or-that', round: 1 }, storage)
     expect(storage.map.size).toBe(0)
     expect(loadActiveGame('', storage)).toBeNull()
   })

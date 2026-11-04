@@ -45,6 +45,14 @@ export const twentyQuestions: GamePlugin = {
           '再给一句小提示，鼓励继续问。100 字以内。'
         )
       default:
+        if (state.endReason === 'guessed') {
+          const who = state.guesserName === undefined ? '' : `${state.guesserName}猜中了。`
+          return (
+            `${who}你心里想的词是「${secret}」。` +
+            '开头必须先明确说「猜对了！」，然后一句夸大家问得好，自然地说游戏结束。' +
+            '不要再出题。80 字以内。'
+          )
+        }
         return (
           `时间到，公布答案：你心里想的词是「${secret}」。` +
           '用一句话说说为什么是它，再夸一句大家问得好，自然地说游戏结束。80 字以内。'

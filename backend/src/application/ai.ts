@@ -13,7 +13,7 @@ import {
   type RoomRecord,
 } from '../domain/room.ts';
 import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
-import { detectGameCommand, gameTask, pickSecret, type GameCommand, type GameHostState } from '../games/index.ts';
+import { detectGameCommand, findGame, gameTask, pickSecret, type GameCommand, type GameHostState } from '../games/index.ts';
 import type { RoomBus } from './bus.ts';
 import type {
   Capability,
@@ -265,6 +265,7 @@ export class AiService {
       round,
       totalRounds,
       ...(secret === null ? {} : { secret }),
+      ...(phase === 'end' ? { endReason: 'manual' as const } : {}),
     };
 
     return {
@@ -318,6 +319,58 @@ export class AiService {
     if (this.room.game !== null) return null;
     if (this.room.running !== null || this.room.queue.length > 0) return null;
     return this.fireAutomatic(Date.now());
+  }
+
+  /**
+   * 成员每发一条消息都看一眼：正在玩「二十问」且猜中暗牌时，自动收尾。
+   *
+   * 收尾是房主视角的一次「回答」：AI 会先说「猜对了！」再公布答案，
+   * 不需要房主再点「下一问」或「结束」。猜中后立即清空 game，避免同一句重复触发。
+   */
+  observeMemberMessage(message: MemberMessageRecord): InvocationRecord | null {
+    const game = this.room.game;
+    if (game === null || game.secret === undefined || this.room.closed) return null;
+    if (!guessedSecret(message.text, game.secret)) return null;
+
+    const plugin = findGame(game.gameId);
+    if (plugin === null) return null;
+
+    const guesser = this.room.members.get(message.authorId);
+    const state: GameHostState = {
+      phase: 'end',
+      round: game.round,
+      totalRounds: game.totalRounds,
+      secret: game.secret,
+      endReason: 'guessed',
+      ...(guesser === undefined ? {} : { guesserName: guesser.profile.nickname }),
+    };
+    const view: CapabilityGameView = {
+      gameId: plugin.id,
+      name: plugin.name,
+      emoji: plugin.emoji,
+      phase: 'end',
+      round: game.round,
+      totalRounds: game.totalRounds,
+      instruction: gameTask(plugin, state),
+    };
+
+    try {
+      const invocation = this.enqueue({
+        source: 'automatic',
+        purpose: 'reply',
+        callerMemberId: message.authorId,
+        invitedMemberId: null,
+        triggerMessageId: message.id,
+        clientRequestId: null,
+        prompt: message.text,
+        game: view,
+      });
+      // 受理成功才结束这一局：入队失败时保留游戏，房主还能手动收尾。
+      this.room.game = null;
+      return invocation;
+    } catch {
+      return null;
+    }
   }
 
   private enqueue(input: EnqueueInput): InvocationRecord {
@@ -672,4 +725,23 @@ const TOPIC_INTENT =
 
 export function wantsTopicIntent(text: string): boolean {
   return TOPIC_INTENT.test(text);
+}
+
+/** 猜中判定用：去掉空白与全部标点，再做包含匹配（「是《千与千寻》吗」也能命中）。 */
+const normalizeGuess = (value: string): string => value.toLowerCase().replace(/[\s\p{P}]/gu, '');
+
+/**
+ * 这条消息是不是在「猜答案」。
+ *
+ * 只做包含匹配会把闲聊误判成猜中（暗牌是「地铁」时，一句「我今天坐地铁来的」就结束了游戏），
+ * 所以还要求消息本身有猜测语气：正好是答案、以「是/猜/答案」开头，或以问号/吗/吧/呢结尾。
+ */
+export function guessedSecret(text: string, secret: string): boolean {
+  const guess = normalizeGuess(text);
+  const answer = normalizeGuess(secret);
+  if (answer.length === 0 || !guess.includes(answer)) return false;
+  const trimmed = text.trim();
+  if (guess === answer) return true;
+  if (/^(是|猜|答案)/.test(trimmed)) return true;
+  return /[?？吗吧呢]$/.test(trimmed);
 }
