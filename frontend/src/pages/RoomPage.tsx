@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { MemberCard } from '../features/room/MemberCard'
 import { ChatFeed } from '../features/chat/ChatFeed'
 import { Composer } from '../features/chat/Composer'
+import { TopicSuggestionBar } from '../features/chat/TopicSuggestionBar'
+import { splitFeeds } from '../features/chat/topicSuggestion'
 import { InviteDialog } from '../features/room/InviteDialog'
 import { ProfileDialog } from '../features/room/ProfileDialog'
 import type { JoinValues } from '../features/join/ProfileForm'
@@ -76,6 +78,8 @@ export default function RoomPage() {
   const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
   /** 限频冷却截止时间，交给 Composer 倒计时并禁用发送 */
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
+  /** 用户收起过的自动话题建议；来了新的一条会重新显示 */
+  const [dismissedSuggestionId, setDismissedSuggestionId] = useState<string | null>(null)
   /** 进入终态后不再建连、不再归并事件 */
   const [terminal, setTerminal] = useState(false)
   const pendingSend = useRef<OutgoingDraft | null>(null)
@@ -343,6 +347,10 @@ export default function RoomPage() {
   const statusText = STATUS_TEXT[status]
   const runningInvocation = state.invocations.find((item) => item.status === 'running')
   const queuedCount = state.invocations.filter((item) => item.status === 'queued').length
+  // 冷场自动补的话题不进聊天记录，单独一条实时建议显示在输入框上方。
+  const { chat: chatMessages, suggestion } = splitFeeds(state.messages, state.invocations)
+  const visibleSuggestion =
+    suggestion !== null && suggestion.replyId !== dismissedSuggestionId ? suggestion : null
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
     if (!session || !activeSession) {
@@ -733,7 +741,13 @@ export default function RoomPage() {
             )}
             <h2 className="pb-2.5 text-[16px] font-bold">聊天</h2>
             <hr className="rule" />
-            <ChatFeed messages={state.messages} />
+            <ChatFeed messages={chatMessages} />
+            {visibleSuggestion !== null && (
+              <TopicSuggestionBar
+                suggestion={visibleSuggestion}
+                onDismiss={() => setDismissedSuggestionId(visibleSuggestion.replyId)}
+              />
+            )}
             <Composer
               canMention={canMention}
               disabled={composerDisabled}
