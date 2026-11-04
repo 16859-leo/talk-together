@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>搭个话 · 作品海报</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 906px; height: 1280px; overflow: hidden; }
+      body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+
+      .stage {
+        position: relative;
+        width: 906px;
+        height: 1280px;
+        background: url("poster-base.jpeg") center / cover no-repeat;
+        color: #eaf4ff;
+        overflow: hidden;
+      }
+
+      /* 顶部赛题区由模板提供，这里只填中段 */
+      .kicker {
+        position: absolute; left: 63px; top: 188px;
+        font-size: 12px; letter-spacing: 0.34em; color: #74d9c2; font-weight: 600;
+      }
+      .title {
+        position: absolute; left: 58px; top: 214px;
+        font-family: "Songti SC", "Noto Serif SC", "SimSun", serif;
+        font-size: 92px; line-height: 1; color: #ffffff; letter-spacing: 0.02em;
+        font-weight: 700; text-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+      }
+      .title small {
+        display: block; margin-top: 14px;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 22px; letter-spacing: 0.42em; color: #9fc6e8; font-weight: 500;
+      }
+      .lede {
+        position: absolute; left: 63px; top: 392px;
+        font-size: 18px; line-height: 1.75; color: #cfe3f6;
+      }
+      .lede b { color: #ffffff; font-weight: 700; }
+      .lede .accent { color: #7fe0c8; font-weight: 700; }
+
+      .shot {
+        position: absolute; left: 53px; top: 470px; width: 800px;
+        border-radius: 14px; overflow: hidden;
+        border: 1px solid rgba(190, 220, 255, 0.35);
+        box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.75);
+      }
+      .shot img { display: block; width: 100%; }
+
+      .chips { position: absolute; left: 63px; top: 992px; display: flex; gap: 10px; }
+      .chip {
+        padding: 8px 16px; border-radius: 999px; font-size: 13px; color: #d8ebff;
+        background: rgba(120, 170, 255, 0.14);
+        border: 1px solid rgba(150, 195, 255, 0.42);
+      }
+
+      .stack {
+        position: absolute; left: 63px; top: 1046px;
+        font-size: 12.5px; letter-spacing: 0.06em; color: #9db9d8;
+      }
+      .repo {
+        position: absolute; left: 63px; top: 1072px;
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 12.5px; color: #7fa8d0;
+      }
+      .repo b { color: #cfe3f6; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="kicker">TALK TOGETHER · V0.1</div>
+      <h1 class="title">
+        搭个话
+        <small>talk together</small>
+      </h1>
+
+      <p class="lede">
+        五个陌生人，一张桌子。<br />
+        <b>AI 在冷场时接一句</b>，<span class="accent">剩下的交给你们。</span>
+      </p>
+
+      <div class="shot">
+        <img src="app-room.png" alt="房间界面" />
+      </div>
+
+      <div class="chips">
+        <span class="chip">5 人一桌</span>
+        <span class="chip">无需注册</span>
+        <span class="chip">关房即散</span>
+        <span class="chip">实时事件流</span>
+      </div>
+
+      <div class="stack">React 19 · TypeScript · WebSocket · AI 导播</div>
+      <div class="repo">github.com/<b>jasper0507/talk-together</b></div>
+    </div>
+  </body>
+</html>
