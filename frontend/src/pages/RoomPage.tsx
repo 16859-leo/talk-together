@@ -459,9 +459,13 @@ export default function RoomPage() {
     }
   }
 
+  /** 房主点名邀请：发一条普通 @AI 消息，后端识别「邀请 + 昵称」后走邀答用途。 */
+  async function inviteMember(member: ActiveMember): Promise<void> {
+    await handleSend(`@AI 邀请${member.profile.nickname}聊聊`, ['ai'])
+  }
+
   // 游戏按钮就是替房主发一条 @AI 的话；轮次推进由后端按文本识别，前端只记开没开。
-  async function startGame(game: GameDefinition): Promise<void> {
-    const ok = await handleSend(game.startText, ['ai'])
+  async function startGame(game: GameDefinition): Promise<void> {    const ok = await handleSend(game.startText, ['ai'])
     if (!ok) return
     const next: ActiveGame = { gameId: game.id }
     setActiveGame(next)
@@ -826,6 +830,15 @@ export default function RoomPage() {
                       Boolean(canMention) && member.role !== 'host' && member.id !== self?.memberId
                     }
                     onRemove={setRemoveTarget}
+                    canInvite={
+                      Boolean(canMention) &&
+                      member.role !== 'host' &&
+                      member.id !== self?.memberId &&
+                      member.membership?.presence !== 'offline'
+                    }
+                    onInvite={(target) => {
+                      void inviteMember(target)
+                    }}
                   />
                 ))}
               </div>

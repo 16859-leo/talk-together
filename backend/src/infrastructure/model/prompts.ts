@@ -128,8 +128,12 @@ export function buildUserPrompt(request: GenerationRequest): string {
         request.currentTopic === null
           ? '当前话题'
           : `当前话题「${request.currentTopic.title}」`;
+      const asked = request.prompt?.trim() ?? '';
+      const askLine =
+        asked.length === 0 ? [] : [`房主点名让你邀请 ${name}：${asked}`];
       return [
         ...base,
+        ...askLine,
         `请邀请 ${name} 就${topicHint}分享具体的看法或经历。`,
         '务必把话题的具体内容点出来，让 ' + name + ' 清楚在聊什么、可以从哪个角度接；' +
           '不要只说「聊聊这个话题」这种笼统的话。',

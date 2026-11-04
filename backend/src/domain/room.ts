@@ -147,9 +147,7 @@ export interface RoomRecord {
   recoveryTimers: Map<string, NodeJS.Timeout>;
   /** 最后一条成员消息的时间戳，冷场判定的基准；AI 发言不更新它。 */
   lastMemberMessageAt: number;
-  /** 当前话题是否已经发起过随机邀答；换话题时重置，保证每话题最多一次。 */
-  invitedForCurrentTopic: boolean;
-  /** 最近一次自动补话的时间戳，用于邀答的二级冷场判定。 */
+  /** 最近一次自动补话的时间戳，用于冷场调度的冷却。 */
   lastAutoAt: number;
 }
 
@@ -203,7 +201,6 @@ export const createRoomRecord = (config: Config, inviteCode: string): RoomRecord
   queue: [],
   recoveryTimers: new Map(),
   lastMemberMessageAt: Date.now(),
-  invitedForCurrentTopic: false,
   lastAutoAt: 0,
 });
 

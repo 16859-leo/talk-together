@@ -7,7 +7,7 @@ import { createStubCapability } from '../src/application/capability.ts';
 const idleConfig = () =>
   testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } });
 
-test('单人房间也可邀答房主（PRD 5.2 不设人数门槛）', async t => {
+test('冷场只会补话题，不会自动点名邀答', async t => {
   const h = await harness(idleConfig());
   t.after(() => h.close());
 
@@ -16,10 +16,7 @@ test('单人房间也可邀答房主（PRD 5.2 不设人数门槛）', async t =
   const ai = service.aiService(host.roomId);
   const room = service.authenticate(host.roomId, host.credential).room;
 
-  // 只有房主一人，且已有当前话题，持续冷场后应发起邀答。
-  for (const member of room.members.values()) {
-    if (member.membership) member.membership.presence = 'online';
-  }
+  // 已有当前话题、持续冷场：应换话题，而不是点名某个人。
   room.currentTopic = {
     id: 'topic_solo',
     title: '热门话题',
@@ -32,12 +29,11 @@ test('单人房间也可邀答房主（PRD 5.2 不设人数门槛）', async t =
   const base = Date.now();
   room.lastMemberMessageAt = base;
   room.lastAutoAt = base;
-  room.invitedForCurrentTopic = false;
 
   const fired = ai.tickIdle(base + 46_000);
-  assert.ok(fired, '单人房间持续冷场也应发起邀答');
-  assert.equal(fired.purpose, 'invitation');
-  assert.equal(fired.invitedMemberId, host.memberId, '目标应为房主本人');
+  assert.ok(fired, '持续冷场应发起自动补话');
+  assert.equal(fired.purpose, 'topic', '自动补话只能是话题，不能点名邀答');
+  assert.equal(fired.invitedMemberId, null, '自动补话不能指定成员');
 });
 
 test('冷场达到阈值先自动选题，且自动调用不带 caller', async t => {
@@ -86,7 +82,7 @@ test('自动触发遇忙直接跳过，不进入等待队列', async t => {
   assert.equal(room.queue.length, queueLength, '跳过不得改变队列长度');
 });
 
-test('每个话题最多一次随机邀答，换话题后重置', async t => {
+test('已有话题时冷场继续换话题，不会点名成员', async t => {
   const h = await harness(idleConfig());
   t.after(() => h.close());
 
@@ -96,11 +92,6 @@ test('每个话题最多一次随机邀答，换话题后重置', async t => {
   const ai = service.aiService(host.roomId);
   const room = service.authenticate(host.roomId, host.credential).room;
 
-  // 模拟已有当前话题，且成员均在线。
-  for (const member of room.members.values()) {
-    if (member.membership) member.membership.presence = 'online';
-  }
-  // 邀答限定在热门话题之后，因此这里用 popular。
   room.currentTopic = {
     id: 'topic_x',
     title: '最近看过的电影',
@@ -114,20 +105,64 @@ test('每个话题最多一次随机邀答，换话题后重置', async t => {
   const base = Date.now();
   room.lastMemberMessageAt = base;
   room.lastAutoAt = base;
-  room.invitedForCurrentTopic = false;
 
-  const invited = ai.tickIdle(base + 46_000);
-  assert.ok(invited, '应触发随机邀答');
-  assert.equal(invited.purpose, 'invitation');
-  assert.ok(invited.invitedMemberId, '邀答必须带目标成员');
-  assert.equal(room.invitedForCurrentTopic, true);
+  const first = ai.tickIdle(base + 46_000);
+  assert.ok(first, '应触发换话题');
+  assert.equal(first.purpose, 'topic');
+  assert.equal(first.invitedMemberId, null);
 
-  // 同一话题不再邀答第二次。
+  // 同一轮冷却之后再冷场，仍然只是换话题。
   room.running = null;
   room.queue = [];
   room.lastAutoAt = base;
   const second = ai.tickIdle(base + 50_000);
-  assert.notEqual(second?.purpose, 'invitation', '同一话题不得重复邀答');
+  assert.equal(second?.purpose, 'topic', '第二次冷场仍然只换话题');
+  assert.equal(second?.invitedMemberId, null, '任何自动触发都不能点名');
+});
+
+test('点名邀答只由房主发起：没「邀请」不算，成员发起被忽略', async t => {
+  const h = await harness(idleConfig());
+  t.after(() => h.close());
+
+  const host = await createHost(h);
+  const guest = await joinGuest(h, host.roomId, host.inviteCode, '小美');
+  const service = (h.app as any).roomService;
+  const room = service.authenticate(host.roomId, host.credential).room;
+
+  const hostSay = (text: string) =>
+    h.call({
+      method: 'POST',
+      url: `/api/v1/rooms/${host.roomId}/messages`,
+      credential: host.credential,
+      membershipId: host.membershipId,
+      body: { clientRequestId: uuid(), text, mentions: ['ai'] },
+    });
+
+  // 提到成员昵称，但没有邀请语气：按普通回复处理，不点名。
+  const plain = await hostSay('@AI 小美最近在忙什么');
+  const plainInvocation = [...room.invocations.values()].find(
+    invocation => invocation.id === plain.data.ai.invocationId,
+  );
+  assert.equal(plainInvocation?.purpose, 'reply');
+  assert.equal(plainInvocation?.invitedMemberId, null);
+
+  // 房主明确点名：走 invitation，目标是这位成员。
+  const invited = await hostSay('@AI 邀请小美聊聊电影');
+  const invitation = [...room.invocations.values()].find(
+    invocation => invocation.id === invited.data.ai.invocationId,
+  );
+  assert.equal(invitation?.purpose, 'invitation');
+  assert.equal(invitation?.invitedMemberId, guest.data.member.id);
+
+  // 普通成员发起点名：整条忽略（AI 不受理）。
+  const guestSay = await h.call({
+    method: 'POST',
+    url: `/api/v1/rooms/${host.roomId}/messages`,
+    credential: guest.data.memberCredential,
+    membershipId: guest.data.member.membership.id,
+    body: { clientRequestId: uuid(), text: '@AI 邀请房主聊聊', mentions: ['ai'] },
+  });
+  assert.equal(guestSay.data.ai.status, 'ignored');
 });
 
 test('房主掉线暂停自动触发，恢复后继续', async t => {

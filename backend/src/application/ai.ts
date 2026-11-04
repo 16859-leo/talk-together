@@ -110,7 +110,6 @@ export class AiService {
     if (this.autoPaused || this.room.closed) return null;
     // 遇忙跳过：不入队，之后重新判断。
     if (this.room.running !== null || this.room.queue.length > 0) return null;
-    // PRD 5.2 要求只有房主一人时也可发起随机邀答，因此不设人数门槛。
     if (activeMembers(this.room).length === 0) return null;
 
     const silentFor = now - this.room.lastMemberMessageAt;
@@ -122,36 +121,26 @@ export class AiService {
     // 每轮轮询都会立刻重试，持续产生失败事件与模型请求。
     if (this.room.currentTopic === null) {
       if (this.room.lastAutoAt > 0 && sinceAuto < this.config.idle.topicMs) return null;
-      return this.fireAutomatic('topic', null, now);
+      return this.fireAutomatic(now);
     }
 
-    // 二级：随机邀答按 CONTEXT.md 与 PRD 5.2 限定在「热门话题发出后持续冷场」，
-    // 共同话题不进入邀答分支，继续等待成员围绕共同兴趣自行交流。
-    const isPopularTopic = this.room.currentTopic.kind === 'popular';
-    if (isPopularTopic && !this.room.invitedForCurrentTopic && sinceAuto >= this.config.idle.invitationMs) {
-      const target = this.pickInvitee();
-      if (target === null) return null;
-      this.room.invitedForCurrentTopic = true;
-      return this.fireAutomatic('invitation', target.id, now);
-    }
-
-    // 已邀答过、或当前是共同话题，持续冷场则换一个新话题。
-    if ((this.room.invitedForCurrentTopic || !isPopularTopic) && sinceAuto >= this.config.idle.topicMs) {
-      return this.fireAutomatic('topic', null, now);
-    }
+    // 二级：持续冷场只换一个话题。
+    // 点名邀答不再自动发生 —— 邀请特定成员必须由房主明确指定（见 handleMention），
+    // 否则房间一冷场就会有人被 AI 点名，像在催人发言。
+    if (sinceAuto >= this.config.idle.topicMs) return this.fireAutomatic(now);
     return null;
   }
 
-  private fireAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null, now: number): InvocationRecord | null {
+  private fireAutomatic(now: number): InvocationRecord | null {
     // 先按入队时间占位，避免同一轮重复触发；真正的冷却起点在输出结束后重设，
-    // 否则生成耗时会被算进等待期，话题刚发布就立刻邀答。
+    // 否则生成耗时会被算进等待期，话题刚发布就立刻再次触发。
     this.room.lastAutoAt = now;
     try {
       return this.enqueue({
         source: 'automatic',
-        purpose,
+        purpose: 'topic',
         callerMemberId: null,
-        invitedMemberId,
+        invitedMemberId: null,
         triggerMessageId: null,
         clientRequestId: null,
         prompt: null,
@@ -164,18 +153,21 @@ export class AiService {
   }
 
   /**
-   * 随机选择一名在线成员作为邀答目标，房主也在候选内。
+   * 房主点名邀请：文本里出现「邀请 / 点名」且包含某位在场成员的昵称，才算。
    *
-   * 目标选择依赖在线状态与成员列表，属于房间状态判定，因此留在应用层；
-   * 插件只通过 context.invitedMember 得知目标并生成话术。
+   * 只认这两个词，避免房主平时聊天提到成员名字（「小美说得对」）被误判成点名。
+   * 目标必须是其他成员：房主不会邀请自己。
    */
-  private pickInvitee(): MemberRecord | null {
-    const candidates = activeMembers(this.room).filter(
-      member => member.membership?.presence === 'online',
-    );
-    if (candidates.length === 0) return null;
-    const index = Math.floor(Math.random() * candidates.length);
-    return candidates[index] ?? null;
+  private findInviteTarget(text: string): MemberRecord | null {
+    if (!/(邀请|点名)/.test(text)) return null;
+    const guests = activeMembers(this.room)
+      .filter(
+        member =>
+          member.id !== this.room.hostMemberId && member.profile.nickname.trim().length > 0,
+      )
+      // 昵称更长的优先，避免「小美」被「小美美」截胡
+      .sort((left, right) => right.profile.nickname.length - left.profile.nickname.length);
+    return guests.find(member => text.includes(member.profile.nickname)) ?? null;
   }
 
   receiptFor(invocation: InvocationRecord | undefined): AiReceipt {
@@ -209,19 +201,22 @@ export class AiService {
       const command = detectGameCommand(input.message.text, this.room.game);
       const prepared = command === null ? null : this.prepareGame(command);
       const game = prepared?.view ?? null;
+      // 点名邀答只由房主发起：不开游戏的提及里出现「邀请/点名 + 成员昵称」才算。
+      const invited = game === null ? this.findInviteTarget(input.message.text) : null;
       const invocation = this.enqueue({
         source: 'host',
+        // 用途优先级：主持游戏 > 点名邀请 > 找话题 > 普通回复。
         // 「帮我找个话题」「还有别的话题吗」不只是闲聊，而是明确的选题请求：
         // 走 topic 用途才会产出话题草稿、更新当前话题，并在下次换话题时被排除。
-        // 一直按 reply 处理时，模型就算抛了话题也只是普通文本，房间的当前话题不变，
-        // 下一轮又会在同一批兴趣关键词里打转（真实会话里连续三轮都在电影上）。
         purpose: game !== null
           ? 'reply'
-          : wantsTopicIntent(input.message.text)
-            ? 'topic'
-            : 'reply',
+          : invited !== null
+            ? 'invitation'
+            : wantsTopicIntent(input.message.text)
+              ? 'topic'
+              : 'reply',
         callerMemberId: input.member.id,
-        invitedMemberId: null,
+        invitedMemberId: invited?.id ?? null,
         triggerMessageId: input.message.id,
         clientRequestId: input.clientRequestId,
         prompt: input.message.text,
@@ -313,13 +308,16 @@ export class AiService {
     }
   }
 
-  /** 自动触发：遇忙直接跳过，不进入等待队列。 */
-  triggerAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null = null): InvocationRecord | null {
+  /**
+   * 自动触发：遇忙直接跳过，不进入等待队列。
+   * 只支持补话题；点名邀答必须由房主发起，参数保留是为了兼容既有调用方。
+   */
+  triggerAutomatic(_purpose: 'topic' = 'topic'): InvocationRecord | null {
     if (this.autoPaused || this.room.closed) return null;
-    // 游戏进行中不插自动话题/邀答：AI 正在主持，冷场补话会和游戏话术打架。
+    // 游戏进行中不插自动话题：AI 正在主持，冷场补话会和游戏话术打架。
     if (this.room.game !== null) return null;
     if (this.room.running !== null || this.room.queue.length > 0) return null;
-    return this.fireAutomatic(purpose, invitedMemberId, Date.now());
+    return this.fireAutomatic(Date.now());
   }
 
   private enqueue(input: EnqueueInput): InvocationRecord {
@@ -625,8 +623,6 @@ export class AiService {
       sourceUrl: draft.sourceUrl ?? null,
       publishedAt: isoTime(),
     };
-    // 新话题开始，重置本话题的邀答额度。
-    this.room.invitedForCurrentTopic = false;
     // 后续冷却以话题公开时刻为起点，给成员留下实际回应时间。
     this.room.lastAutoAt = Date.now();
     // 当前话题按 PRD 单独公开，不做入房前可见性过滤。

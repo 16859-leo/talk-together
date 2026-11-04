@@ -269,7 +269,7 @@ test('[P2-11] 选题调用的草稿正常生效', async t => {
   await sleep(400);
 
   assert.ok(room.currentTopic, '选题调用的草稿应生效');
-  assert.equal(room.invitedForCurrentTopic, false, '新话题应重置邀答额度');
+  assert.ok(room.lastAutoAt > 0, '话题发布后应重新开始冷场冷却');
 });
 
 // =============================================== P2-8 关房清理引导记录
@@ -338,9 +338,9 @@ test('[P2-12] PATCH 的重复标签同样被拒绝', async t => {
   assert.equal(patched.code, 'VALIDATION_ERROR');
 });
 
-// =============================================== P2-9 单人房间邀答
+// =============================================== P2-9 单人房间冷场
 
-test('[P2-9] 单人房间持续冷场也会邀答房主', async t => {
+test('[P2-9] 单人房间持续冷场只补话题，不会自动点名房主', async t => {
   const h = await harness(testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } }));
   t.after(() => h.close());
 
@@ -364,7 +364,7 @@ test('[P2-9] 单人房间持续冷场也会邀答房主', async t => {
   room.lastAutoAt = base;
 
   const fired = service.aiService(host.roomId).tickIdle(base + 46_000);
-  assert.ok(fired, '单人房间也应发起邀答');
-  assert.equal(fired.purpose, 'invitation');
-  assert.equal(fired.invitedMemberId, host.memberId);
+  assert.ok(fired, '单人房间冷场也应补话题');
+  assert.equal(fired.purpose, 'topic', '自动补话不再是点名邀答');
+  assert.equal(fired.invitedMemberId, null);
 });
