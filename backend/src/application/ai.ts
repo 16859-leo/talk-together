@@ -13,10 +13,12 @@ import {
   type RoomRecord,
 } from '../domain/room.ts';
 import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
+import { detectGameCommand, gameTask, type GameCommand } from '../games/index.ts';
 import type { RoomBus } from './bus.ts';
 import type {
   Capability,
   CapabilityContext,
+  CapabilityGameView,
   CapabilityMemberView,
   CapabilityMessageView,
 } from './capability.ts';
@@ -35,6 +37,8 @@ interface EnqueueInput {
   readonly triggerMessageId: string | null;
   readonly clientRequestId: string | null;
   readonly prompt: string | null;
+  /** 这一轮主持游戏时的任务；普通调用为 null。 */
+  readonly game: CapabilityGameView | null;
 }
 
 /**
@@ -52,6 +56,8 @@ export class AiService {
   private idleTimer: NodeJS.Timeout | null = null;
   /** 排队阶段的提示词，按 invocationId 暂存。 */
   private readonly prompts = new Map<string, string | null>();
+  /** 这一轮主持游戏的任务，按 invocationId 暂存（和提示词一样在终态清理）。 */
+  private readonly gameViews = new Map<string, CapabilityGameView>();
 
   constructor(
     config: Config,
@@ -149,6 +155,7 @@ export class AiService {
         triggerMessageId: null,
         clientRequestId: null,
         prompt: null,
+        game: null,
       });
     } catch {
       // 自动触发失败不对外报错，下次轮询重新判断。
@@ -197,19 +204,30 @@ export class AiService {
     if (input.member.role !== 'host') return { status: 'ignored' };
 
     try {
+      // 游戏指令优先于普通提及：房主点「开始/下一题/结束」时，AI 这一轮主持游戏，
+      // 而不是把它当成「来找个话题」处理。
+      const command = detectGameCommand(input.message.text, this.room.game);
+      const game = command === null ? null : this.buildGameView(command);
       const invocation = this.enqueue({
         source: 'host',
         // 「帮我找个话题」「还有别的话题吗」不只是闲聊，而是明确的选题请求：
         // 走 topic 用途才会产出话题草稿、更新当前话题，并在下次换话题时被排除。
         // 一直按 reply 处理时，模型就算抛了话题也只是普通文本，房间的当前话题不变，
         // 下一轮又会在同一批兴趣关键词里打转（真实会话里连续三轮都在电影上）。
-        purpose: wantsTopicIntent(input.message.text) ? 'topic' : 'reply',
+        purpose: game !== null
+          ? 'reply'
+          : wantsTopicIntent(input.message.text)
+            ? 'topic'
+            : 'reply',
         callerMemberId: input.member.id,
         invitedMemberId: null,
         triggerMessageId: input.message.id,
         clientRequestId: input.clientRequestId,
         prompt: input.message.text,
+        game,
       });
+      // 受理成功后才推进轮次：排队已满时不能把房间的游戏状态改掉。
+      if (command !== null && game !== null) this.applyGameCommand(command, game);
       return invocation.status === 'running'
         ? { status: 'running', invocationId: invocation.id }
         : { status: 'queued', invocationId: invocation.id };
@@ -218,9 +236,60 @@ export class AiService {
     }
   }
 
+  /** 把「这一步该说什么」整理成给能力插件的游戏任务。 */
+  private buildGameView(command: GameCommand): CapabilityGameView {
+    const active = this.room.game;
+    const totalRounds = command.game.totalRounds;
+    let phase: 'start' | 'round' | 'end';
+    let round: number;
+    if (command.action === 'start') {
+      phase = 'start';
+      round = 1;
+    } else if (command.action === 'end') {
+      phase = 'end';
+      round = active?.round ?? totalRounds;
+    } else {
+      phase = 'round';
+      round = Math.min((active?.round ?? 0) + 1, totalRounds);
+    }
+    return {
+      gameId: command.game.id,
+      name: command.game.name,
+      emoji: command.game.emoji,
+      phase,
+      round,
+      totalRounds,
+      instruction: gameTask(command.game, { phase, round, totalRounds }),
+    };
+  }
+
+  /** 轮次推进由应用层负责；模型只负责话术，不决定游戏状态。 */
+  private applyGameCommand(command: GameCommand, game: CapabilityGameView): void {
+    switch (command.action) {
+      case 'start':
+        this.room.game = {
+          gameId: game.gameId,
+          round: 1,
+          totalRounds: game.totalRounds,
+          startedAt: isoTime(),
+        };
+        break;
+      case 'next':
+        if (this.room.game !== null && this.room.game.gameId === game.gameId) {
+          this.room.game.round = game.round;
+        }
+        break;
+      case 'end':
+        this.room.game = null;
+        break;
+    }
+  }
+
   /** 自动触发：遇忙直接跳过，不进入等待队列。 */
   triggerAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null = null): InvocationRecord | null {
     if (this.autoPaused || this.room.closed) return null;
+    // 游戏进行中不插自动话题/邀答：AI 正在主持，冷场补话会和游戏话术打架。
+    if (this.room.game !== null) return null;
     if (this.room.running !== null || this.room.queue.length > 0) return null;
     return this.fireAutomatic(purpose, invitedMemberId, Date.now());
   }
@@ -251,6 +320,7 @@ export class AiService {
     };
     this.room.invocations.set(invocation.id, invocation);
     this.prompts.set(invocation.id, input.prompt);
+    if (input.game !== null) this.gameViews.set(invocation.id, input.game);
     this.room.queue.push(invocation.id);
     invocation.queuePosition = this.room.queue.length;
 
@@ -458,6 +528,7 @@ export class AiService {
             kind: this.room.currentTopic.kind,
           },
       prompt: this.prompts.get(invocation.id) ?? null,
+      game: this.gameViews.get(invocation.id) ?? null,
       signal,
     };
   }
@@ -480,6 +551,7 @@ export class AiService {
     invocation.expiresAt = null;
     invocation.queuePosition = null;
     this.prompts.delete(invocation.id);
+    this.gameViews.delete(invocation.id);
 
     // 自动发话的后续冷却从输出真正结束时开始计算，
     // 否则生成耗时会被算进等待期，成员没有实际回应时间。
@@ -510,6 +582,7 @@ export class AiService {
     invocation.finishedAt = isoTime();
     invocation.error = { code, message, retryAfterMs: null };
     this.prompts.delete(invocation.id);
+    this.gameViews.delete(invocation.id);
     this.bus.publish('ai.invocation.updated', { invocation: wireInvocation(this.room, invocation) }, invocation.createdSequence);
   }
 

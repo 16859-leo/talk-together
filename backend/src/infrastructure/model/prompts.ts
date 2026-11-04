@@ -85,6 +85,18 @@ export function buildUserPrompt(request: GenerationRequest): string {
     (message) => message.authorId === AI_SPEAKER_AUTHOR_ID,
   );
 
+  // 游戏主持轮次：任务由游戏插件给出，这里只负责把它放在正确的上下文里。
+  const game = request.game ?? null;
+  if (game !== null) {
+    return [
+      ...base,
+      `你在主持房间游戏「${game.name}」第 ${game.round}/${game.totalRounds} 轮。`,
+      `本轮任务：${game.instruction}`,
+      '只输出你这一轮要对房间说的话：口语化，不要分点，不要加「主持」「游戏开始：」之类前缀，' +
+        '也不要解释游戏规则以外的内容。这一轮可以放宽到 100 字左右。',
+    ].join('\n\n');
+  }
+
   switch (request.purpose) {
     case 'topic': {
       // 已经聊过话题时不再围绕共同兴趣检索：同一批兴趣关键词只会反复捞出同一类话题

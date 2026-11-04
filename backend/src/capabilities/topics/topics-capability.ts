@@ -66,6 +66,7 @@ export class TopicsCapability implements Capability {
       prompt: context.prompt,
       caller: context.caller === null ? null : toMemberView(context.caller),
       invitedMember: context.invitedMember === null ? null : toMemberView(context.invitedMember),
+      game: context.game ?? null,
       signal: context.signal,
     };
 

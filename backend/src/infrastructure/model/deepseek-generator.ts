@@ -118,7 +118,9 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
       // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
       // invitation 不需要工具：目标已由应用层选定，只生成话术。
-      const toolOption = request.purpose === 'invitation' ? {} : { tools };
+      // 游戏主持同理：任务文案已给定，不挂任何工具。
+      const hostingGame = request.game !== undefined && request.game !== null;
+      const toolOption = request.purpose === 'invitation' || hostingGame ? {} : { tools };
 
       // SDK 把错误放入流事件而非抛出，用 onError 显式捕获再映射。
       let streamError: unknown = null;
@@ -288,6 +290,10 @@ export class DeepSeekTextGenerator implements TextGenerator {
     state: SelectionState,
     seenCalls: Set<string>,
   ): ToolSet {
+    // 主持游戏不用任何工具：任务文案已经由游戏插件给定，检索只会拖慢这一轮、
+    // 还可能把话题素材混进主持话术里。
+    if (request.game !== undefined && request.game !== null) return {};
+
     const shared = commonInterestTags(request.members);
     const allTags = [...new Set(request.members.flatMap((m) => m.interestTags))];
     /** 换话题场景下不要把当前话题再抛一次。 */

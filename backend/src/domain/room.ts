@@ -107,6 +107,20 @@ export interface TopicRecord {
   publishedAt: string;
 }
 
+/**
+ * 一局插件式游戏的会话状态。
+ *
+ * 只由房主的按钮指令推进（见 `application/games`），AI 只负责主持话术，
+ * 不参与判定胜负或记分——这样游戏规则是确定性的，模型出错也不会卡住流程。
+ */
+export interface GameSessionRecord {
+  gameId: string;
+  /** 当前轮次，从 1 开始。 */
+  round: number;
+  totalRounds: number;
+  startedAt: string;
+}
+
 export interface RoomRecord {
   id: string;
   hostMemberId: string;
@@ -114,6 +128,8 @@ export interface RoomRecord {
   status: 'open' | 'host_reconnecting';
   hostRecoveryExpiresAt: string | null;
   currentTopic: TopicRecord | null;
+  /** 正在进行的插件式游戏；null 表示没有开。 */
+  game: GameSessionRecord | null;
   inviteCode: string;
   closed: boolean;
   /** 单调递增的房间事件序号；状态变更与取号在同一临界区完成。 */
@@ -135,8 +151,7 @@ export interface RoomRecord {
   lastAutoAt: number;
 }
 
-/** 昵称归一化：去首尾空白并压缩内部空白，唯一性以此为准。 */
-export const normalizeNickname = (value: string): string => value.trim().replace(/\s+/g, ' ');
+/** 昵称归一化：去首尾空白并压缩内部空白，唯一性以此为准。 */export const normalizeNickname = (value: string): string => value.trim().replace(/\s+/g, ' ');
 
 /** 取下一个事件序号。调用方必须已经完成状态变更，保证取号与变更同序。 */
 export const nextSequence = (room: RoomRecord): number => ++room.sequence;
@@ -174,6 +189,7 @@ export const createRoomRecord = (config: Config, inviteCode: string): RoomRecord
   status: 'open',
   hostRecoveryExpiresAt: null,
   currentTopic: null,
+  game: null,
   inviteCode,
   closed: false,
   sequence: 0,

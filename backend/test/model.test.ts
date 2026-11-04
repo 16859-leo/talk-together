@@ -312,6 +312,28 @@ test('提示词：选题分支要求换一个方向，不要复述上一轮', ()
   assert.ok(p.includes('换话题要真的换'));
 });
 
+test('提示词：游戏主持轮次带上游戏名、轮次和插件任务', () => {
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'reply',
+      prompt: '来玩默契二选一',
+      game: {
+        gameId: 'this-or-that',
+        name: '默契二选一',
+        emoji: '⚖️',
+        phase: 'round',
+        round: 2,
+        totalRounds: 5,
+        instruction: '先点评票型，再出下一道二选一。',
+      },
+    }),
+  );
+  assert.ok(p.includes('「默契二选一」'));
+  assert.ok(p.includes('第 2/5 轮'));
+  assert.ok(p.includes('先点评票型'));
+  assert.ok(p.includes('100 字'));
+});
+
 test('提示词：已经聊过话题后，选题改用热榜换领域', () => {
   const p = buildUserPrompt(
     makeRequest({

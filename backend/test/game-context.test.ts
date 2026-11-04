@@ -1,0 +1,112 @@
+/**
+ * 游戏主持的应用层集成测试。
+ *
+ * 验证：房主的按钮文本 → 应用层识别轮次 → 能力插件拿到 game 任务；
+ * 轮次推进/收尾不依赖模型；游戏进行中不触发自动话题。
+ */
+
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import { build } from '../src/app.ts';
+import type {
+  Capability,
+  CapabilityChunk,
+  CapabilityContext,
+} from '../src/application/capability.ts';
+import { secret, testConfig, uuid } from './helpers.ts';
+
+class RecordingCapability implements Capability {
+  readonly name = 'recording';
+  readonly contexts: CapabilityContext[] = [];
+
+  async *run(context: CapabilityContext): AsyncIterable<CapabilityChunk> {
+    this.contexts.push(context);
+    yield { kind: 'text', delta: '好的，这就开始。' };
+  }
+}
+
+const waitUntil = async (
+  predicate: () => boolean,
+  label: string,
+  timeoutMs = 3000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`timeout waiting for ${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+};
+
+test('游戏：房主按钮推进轮次，能力插件拿到带任务的主持上下文', async (t) => {
+  const capability = new RecordingCapability();
+  const app = await build({
+    config: testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } }),
+    capability,
+  });
+  t.after(() => app.close());
+
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/rooms',
+    payload: {
+      clientRequestId: uuid(),
+      bootstrapToken: secret(),
+      profile: { nickname: '房主小林', interestTags: ['电影'], bio: '' },
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  const createdBody = created.json() as any;
+  const roomId = createdBody.data.room.id as string;
+  const credential = createdBody.data.memberCredential as string;
+  const membershipId = createdBody.data.member.membership.id as string;
+
+  const service = (app as any).roomService;
+  const room = service.authenticate(roomId, credential).room;
+
+  const say = async (text: string) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/rooms/${roomId}/messages`,
+      headers: { authorization: `Bearer ${credential}`, 'x-membership-id': membershipId },
+      payload: { clientRequestId: uuid(), text, mentions: ['ai'] },
+    });
+    assert.equal(response.statusCode, 201, response.body);
+  };
+
+  // 开局
+  await say('@AI 来玩默契二选一');
+  await waitUntil(() => capability.contexts.length === 1, '开局调用');
+  const started = capability.contexts[0]!.game;
+  assert.ok(started, '开局这一轮必须带 game 任务');
+  assert.equal(started.phase, 'start');
+  assert.equal(started.round, 1);
+  assert.equal(started.totalRounds, 5);
+  assert.ok(started.instruction.includes('二选一'), '任务文案应来自游戏插件');
+  assert.deepEqual(
+    { gameId: room.game.gameId, round: room.game.round },
+    { gameId: 'this-or-that', round: 1 },
+  );
+
+  // 游戏进行中：冷场自动话题必须让位
+  await waitUntil(() => room.running === null, '开局回复结束');
+  assert.equal(service.aiService(roomId).triggerAutomatic('topic'), null);
+
+  // 下一题
+  await say('@AI 下一题');
+  await waitUntil(() => capability.contexts.length === 2, '第二轮调用');
+  assert.equal(capability.contexts[1]!.game?.phase, 'round');
+  assert.equal(capability.contexts[1]!.game?.round, 2);
+  assert.equal(room.game.round, 2);
+
+  // 收尾
+  await say('@AI 结束游戏');
+  await waitUntil(() => capability.contexts.length === 3, '收尾调用');
+  assert.equal(capability.contexts[2]!.game?.phase, 'end');
+  assert.equal(room.game, null, '收尾后不再有进行中的游戏');
+
+  // 收尾之后「下一题」回到普通回复，不会凭空开一局
+  await say('@AI 下一题');
+  await waitUntil(() => capability.contexts.length === 4, '收尾后的普通回复');
+  assert.equal(capability.contexts[3]!.game, null);
+});

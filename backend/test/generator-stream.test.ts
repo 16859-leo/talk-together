@@ -862,3 +862,48 @@ test('能力扩展：资料检索失败不终止整轮回复', async () => {
     .join('');
   assert.ok(whole.includes('没查到'), `上游失败时也要说人话，实际：${whole}`);
 });
+
+// ---------- 插件式游戏：主持轮次 ----------
+
+test('游戏主持：不挂任何工具，直接产出主持话术', async () => {
+  const toolNames: string[][] = [];
+  const model = new MockLanguageModelV4({
+    doStream: async (options: unknown) => {
+      const tools = (options as { tools?: readonly { name?: string }[] }).tools ?? [];
+      toolNames.push(tools.map((item) => item.name ?? ''));
+      return {
+        stream: simulateReadableStream({
+          chunks: textChunks(['第一题：周末是早起出门，还是熬夜补剧？']),
+          chunkDelayInMs: 0,
+        }) as unknown as ReadableStream,
+      };
+    },
+  });
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new StubSource()), {
+    modelOverride: model,
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(
+    gen.generate(
+      makeRequest({
+        prompt: '来玩默契二选一',
+        game: {
+          gameId: 'this-or-that',
+          name: '默契二选一',
+          emoji: '⚖️',
+          phase: 'start',
+          round: 1,
+          totalRounds: 5,
+          instruction: '说明玩法并出第一道二选一。',
+        },
+      }),
+    ),
+  );
+  const whole = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+  assert.ok(whole.includes('早起'), `应产出主持话术，实际：${whole}`);
+  assert.deepEqual(toolNames[0], [], '主持游戏不该给模型任何工具');
+});

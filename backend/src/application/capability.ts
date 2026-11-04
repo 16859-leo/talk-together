@@ -28,6 +28,22 @@ export interface CapabilityTopicView {
   readonly kind: 'common' | 'popular';
 }
 
+/**
+ * 插件式游戏的当前轮次。
+ *
+ * `instruction` 由游戏插件给出，能力层只负责照着它生成主持话术；
+ * 轮次推进、开局收尾由应用层按房主指令决定，模型不参与。
+ */
+export interface CapabilityGameView {
+  readonly gameId: string;
+  readonly name: string;
+  readonly emoji: string;
+  readonly phase: 'start' | 'round' | 'end';
+  readonly round: number;
+  readonly totalRounds: number;
+  readonly instruction: string;
+}
+
 export interface CapabilityContext {
   readonly roomId: string;
   /** 调用用途：普通回复、选题或随机邀答。 */
@@ -41,6 +57,8 @@ export interface CapabilityContext {
   readonly currentTopic: CapabilityTopicView | null;
   /** 房主提及时附带的文本。 */
   readonly prompt: string | null;
+  /** 这一轮在主持游戏时才有；普通回复/选题/邀答为 null。 */
+  readonly game?: CapabilityGameView | null;
   readonly signal: AbortSignal;
 }
 
