@@ -25,8 +25,6 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
 
 # Node development dependencies
 node_modules/
@@ -56,3 +54,8 @@ dist/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# 环境变量文件（可能含密钥，禁止提交）
+.env
+.env.local
+.env.*.local

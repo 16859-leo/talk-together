@@ -7,9 +7,9 @@
     "node": ">=24.15.0"
   },
   "scripts": {
-    "dev": "node --watch src/main.ts",
-    "start": "node src/main.ts",
-    "start:ai": "node src/main-ai.ts",
+    "dev": "node --env-file-if-exists=.env --watch src/main.ts",
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "start:ai": "node --env-file-if-exists=.env src/main-ai.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/**/*.test.ts",
     "demo": "node demo.mjs"

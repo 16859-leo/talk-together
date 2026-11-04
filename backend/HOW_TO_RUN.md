@@ -239,11 +239,30 @@ cd D:\作业\实践周\talk-together && npm run check --prefix contracts && cd b
 - 演练里的 AI 文本来自**假插件**（固定内容、不接任何模型），验证的是后端的调度与
   事件逻辑（队列、串行、取消、可见性）。默认 `npm start` 也使用假插件。
 - 真实选题与话术的 Agent 实现已合入，与应用层共用 `src/application/capability.ts`。
-  **联调/验收用 `npm run start:ai`**（`src/main-ai.ts`）启动真实插件，需要提供
-  DeepSeek 密钥和知乎 CLI 路径：
+  **联调/验收用 `npm run start:ai`**（`src/main-ai.ts`）启动真实插件，需要 DeepSeek 密钥；
+  知乎数据源三选一，由 `ZHIHU_SOURCE` 决定：
+
+  | 值 | 说明 | 需要的配置 |
+  | --- | --- | --- |
+  | `http` | 直连知乎开放平台（推荐） | `ZHIHU_ACCESS_SECRET`，可选 `ZHIHU_API_BASE` |
+  | `cli` | 调用本地 zhihu-cli（回退方案） | `ZHIHU_CLI_PATH` |
+  | `offline` | 内置话题池，不联网 | 无 |
+
+  不填 `ZHIHU_SOURCE` 时自动选择：有 secret 用 `http`，其次 `cli`，最后 `offline`。
+  三种模式都只影响话题来源，模型调用始终是真实的 DeepSeek。
+
+  推荐把配置写进 `backend/.env`（已 gitignore），格式见 `backend/.env.example`：
+
+  ```ini
+  DEEPSEEK_API_KEY=...
+  ZHIHU_SOURCE=http
+  ZHIHU_ACCESS_SECRET=...
+  ```
+
+  也可以继续用环境变量：
 
   ```powershell
-  $env:DEEPSEEK_API_KEY="..."; $env:ZHIHU_CLI_PATH="..."; npm run start:ai
+  $env:DEEPSEEK_API_KEY="..."; $env:ZHIHU_ACCESS_SECRET="..."; npm run start:ai
   ```
 
   仅设置环境变量不会自动切换插件，`npm start` 永远用假插件。
