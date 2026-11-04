@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "node --watch src/main.ts",
     "start": "node src/main.ts",
+    "start:ai": "node src/main-ai.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/**/*.test.ts",
     "demo": "node demo.mjs"

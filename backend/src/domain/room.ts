@@ -9,6 +9,17 @@ export interface Profile {
 
 export type Presence = 'connecting' | 'online' | 'offline';
 
+/**
+ * 房间内 AI 发言人的身份。
+ *
+ * 成员 id 由 `newId()` 生成，不会等于 "ai"，因此可以安全地用 authorId 区分
+ * 「真人说过的话」与「AI 自己说过的话」——生成器靠这一点决定哪些历史只用于
+ * 理解上下文、不参与「复述成员原话」的闸门判断。
+ */
+export const AI_SPEAKER_AUTHOR_ID = 'ai';
+/** AI 在最近发言里的显示名，与前端气泡上的名字保持一致。 */
+export const AI_SPEAKER_NICKNAME = 'AI 导播';
+
 export interface Membership {
   id: string;
   joinedSequence: number;
@@ -96,6 +107,22 @@ export interface TopicRecord {
   publishedAt: string;
 }
 
+/**
+ * 一局插件式游戏的会话状态。
+ *
+ * 只由房主的按钮指令推进（见 `application/games`），AI 只负责主持话术，
+ * 不参与判定胜负或记分——这样游戏规则是确定性的，模型出错也不会卡住流程。
+ */
+export interface GameSessionRecord {
+  gameId: string;
+  /** 当前轮次，从 1 开始。 */
+  round: number;
+  totalRounds: number;
+  startedAt: string;
+  /** 「二十问」这类玩法开局抽到的暗牌；整局固定，中途不换。 */
+  secret?: string;
+}
+
 export interface RoomRecord {
   id: string;
   hostMemberId: string;
@@ -103,6 +130,8 @@ export interface RoomRecord {
   status: 'open' | 'host_reconnecting';
   hostRecoveryExpiresAt: string | null;
   currentTopic: TopicRecord | null;
+  /** 正在进行的插件式游戏；null 表示没有开。 */
+  game: GameSessionRecord | null;
   inviteCode: string;
   closed: boolean;
   /** 单调递增的房间事件序号；状态变更与取号在同一临界区完成。 */
@@ -118,14 +147,11 @@ export interface RoomRecord {
   recoveryTimers: Map<string, NodeJS.Timeout>;
   /** 最后一条成员消息的时间戳，冷场判定的基准；AI 发言不更新它。 */
   lastMemberMessageAt: number;
-  /** 当前话题是否已经发起过随机邀答；换话题时重置，保证每话题最多一次。 */
-  invitedForCurrentTopic: boolean;
-  /** 最近一次自动补话的时间戳，用于邀答的二级冷场判定。 */
+  /** 最近一次自动补话的时间戳，用于冷场调度的冷却。 */
   lastAutoAt: number;
 }
 
-/** 昵称归一化：去首尾空白并压缩内部空白，唯一性以此为准。 */
-export const normalizeNickname = (value: string): string => value.trim().replace(/\s+/g, ' ');
+/** 昵称归一化：去首尾空白并压缩内部空白，唯一性以此为准。 */export const normalizeNickname = (value: string): string => value.trim().replace(/\s+/g, ' ');
 
 /** 取下一个事件序号。调用方必须已经完成状态变更，保证取号与变更同序。 */
 export const nextSequence = (room: RoomRecord): number => ++room.sequence;
@@ -163,6 +189,7 @@ export const createRoomRecord = (config: Config, inviteCode: string): RoomRecord
   status: 'open',
   hostRecoveryExpiresAt: null,
   currentTopic: null,
+  game: null,
   inviteCode,
   closed: false,
   sequence: 0,
@@ -174,7 +201,6 @@ export const createRoomRecord = (config: Config, inviteCode: string): RoomRecord
   queue: [],
   recoveryTimers: new Map(),
   lastMemberMessageAt: Date.now(),
-  invitedForCurrentTopic: false,
   lastAutoAt: 0,
 });
 

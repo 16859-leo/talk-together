@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createTopicsCapabilityWith } from '../src/capabilities/topics/index.ts';
+import { AppError } from '../src/domain/errors.ts';
 import { CapabilityError } from '../src/infrastructure/zhihu/types.ts';
 import type {
   GenerationChunk,
@@ -135,13 +136,15 @@ test('取消：signal 透传到生成请求', async () => {
   assert.equal(gen.lastRequest?.signal, controller.signal);
 });
 
-test('错误：生成器抛出的 CapabilityError 原样向上传播', async () => {
+test('错误：生成器抛出的 CapabilityError 转成应用层 AppError 并保留错误码', async () => {
   const gen = new RecordingGenerator([], new CapabilityError('AI_PROVIDER_ERROR', '模型未产出'));
   const cap = createTopicsCapabilityWith(gen);
 
   await assert.rejects(
     () => collect(cap.run(makeContext())),
-    (error: unknown) => error instanceof CapabilityError && error.code === 'AI_PROVIDER_ERROR',
+    (error: unknown) =>
+      error instanceof AppError && error.code === 'AI_PROVIDER_ERROR' && error.message === '模型未产出',
+    '应用层要靠 AppError 识别失败原因，插件边界必须完成转换',
   );
 });
 

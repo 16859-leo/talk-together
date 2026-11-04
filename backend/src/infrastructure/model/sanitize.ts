@@ -24,6 +24,15 @@
 /** 输出硬上限。prompt 要求 55 字以内，超出按硬裁剪处理。 */
 export const MAX_TEXT_LENGTH = 70;
 
+/**
+ * 普通回复（回答、解释、总结）的上限。
+ *
+ * 话题只要一句话，70 字足够；但「这本书讲了什么」这类回答在 70 字处会被拦腰截断
+ * （真实调用里出现过「…结果两人互相治愈，医生自…」）。回答类允许更长的正文，
+ * 上限仍然存在，避免模型写成小作文。
+ */
+export const MAX_REPLY_TEXT_LENGTH = 120;
+
 /** 可交付文本的最短长度；低于它视为「没说话」，不能算完成。 */
 export const MIN_TEXT_LENGTH = 6;
 
@@ -182,17 +191,39 @@ export type RejectReason =
   | 'LOOKS_LIKE_TRANSCRIPT'
   | 'ECHOES_USER_MESSAGE';
 
+/** 闸门需要的最近发言：正文必备，昵称用于识别「谁：正文」式转录。 */
+export interface RecentMessageView {
+  readonly text: string;
+  readonly nickname?: string;
+}
+
 /**
  * 质量闸门。返回拒绝原因，null 表示通过。
  * 调用方据此决定重试或抛错，不得把不合格文本发给房间。
+ *
+ * `memberNicknames` 是房间内成员昵称：只有冒号前的短标签确实是某位成员时，
+ * 才判成「转录式复述」。否则「换个话题：」「补充一下：」这类正常的引导语会被误杀
+ * （真实缺陷：AI 说「换个话题：你露营时拍过哪张照片…」被连续三轮判成转录）。
+ * 没提供任何昵称时退回旧的启发式判断，保持独立调用方的行为不变。
  */
 export function rejectOutput(
   text: string,
-  recentMessages: readonly { readonly text: string }[] = [],
+  recentMessages: readonly RecentMessageView[] = [],
+  memberNicknames: readonly string[] = [],
 ): RejectReason | null {
   if (text.length < MIN_TEXT_LENGTH) return 'TOO_SHORT';
-  // 「昵称：...」形式的转录
-  if (/^[^\s:：]{1,8}[:：]/.test(text)) return 'LOOKS_LIKE_TRANSCRIPT';
+
+  // 「昵称：...」形式的转录。
+  const label = /^([^\s:：]{1,8})[:：]/.exec(text);
+  if (label) {
+    const names = new Set(memberNicknames.filter((name) => name.trim().length > 0));
+    for (const message of recentMessages) {
+      if (typeof message.nickname === 'string' && message.nickname.trim().length > 0) {
+        names.add(message.nickname);
+      }
+    }
+    if (names.size === 0 || names.has(label[1]!)) return 'LOOKS_LIKE_TRANSCRIPT';
+  }
 
   for (const message of recentMessages) {
     const source = message.text;

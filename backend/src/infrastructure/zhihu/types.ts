@@ -54,6 +54,16 @@ export interface ZhihuSearchItem {
   readonly authorName: string | null;
 }
 
+/**
+ * 资料检索返回的单条摘要，供模型回答事实性问题（不是话题候选）。
+ * 与话题候选的区别：不做破冰适宜性筛选，保留原文摘要与来源链接。
+ */
+export interface KnowledgeSnippet {
+  readonly title: string;
+  readonly snippet: string;
+  readonly url: string;
+}
+
 /** 知乎热榜返回的单条内容。 */
 export interface ZhihuHotItem {
   readonly title: string;

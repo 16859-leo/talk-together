@@ -1,6 +1,8 @@
 import { isoTime, newId, type Config } from '../config.ts';
 import { AppError, toFailure, type ErrorCode } from '../domain/errors.ts';
 import {
+  AI_SPEAKER_AUTHOR_ID,
+  AI_SPEAKER_NICKNAME,
   activeMembers,
   nextSequence,
   type AIReplyRecord,
@@ -11,8 +13,15 @@ import {
   type RoomRecord,
 } from '../domain/room.ts';
 import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
+import { detectGameCommand, findGame, gameTask, pickSecret, type GameCommand, type GameHostState } from '../games/index.ts';
 import type { RoomBus } from './bus.ts';
-import type { Capability, CapabilityContext, CapabilityMemberView } from './capability.ts';
+import type {
+  Capability,
+  CapabilityContext,
+  CapabilityGameView,
+  CapabilityMemberView,
+  CapabilityMessageView,
+} from './capability.ts';
 
 /** HTTP 回执的 AI 部分，对应契约的 AiReceipt。 */
 export type AiReceipt =
@@ -28,6 +37,8 @@ interface EnqueueInput {
   readonly triggerMessageId: string | null;
   readonly clientRequestId: string | null;
   readonly prompt: string | null;
+  /** 这一轮主持游戏时的任务；普通调用为 null。 */
+  readonly game: CapabilityGameView | null;
 }
 
 /**
@@ -45,6 +56,8 @@ export class AiService {
   private idleTimer: NodeJS.Timeout | null = null;
   /** 排队阶段的提示词，按 invocationId 暂存。 */
   private readonly prompts = new Map<string, string | null>();
+  /** 这一轮主持游戏的任务，按 invocationId 暂存（和提示词一样在终态清理）。 */
+  private readonly gameViews = new Map<string, CapabilityGameView>();
 
   constructor(
     config: Config,
@@ -97,7 +110,6 @@ export class AiService {
     if (this.autoPaused || this.room.closed) return null;
     // 遇忙跳过：不入队，之后重新判断。
     if (this.room.running !== null || this.room.queue.length > 0) return null;
-    // PRD 5.2 要求只有房主一人时也可发起随机邀答，因此不设人数门槛。
     if (activeMembers(this.room).length === 0) return null;
 
     const silentFor = now - this.room.lastMemberMessageAt;
@@ -109,39 +121,30 @@ export class AiService {
     // 每轮轮询都会立刻重试，持续产生失败事件与模型请求。
     if (this.room.currentTopic === null) {
       if (this.room.lastAutoAt > 0 && sinceAuto < this.config.idle.topicMs) return null;
-      return this.fireAutomatic('topic', null, now);
+      return this.fireAutomatic(now);
     }
 
-    // 二级：随机邀答按 CONTEXT.md 与 PRD 5.2 限定在「热门话题发出后持续冷场」，
-    // 共同话题不进入邀答分支，继续等待成员围绕共同兴趣自行交流。
-    const isPopularTopic = this.room.currentTopic.kind === 'popular';
-    if (isPopularTopic && !this.room.invitedForCurrentTopic && sinceAuto >= this.config.idle.invitationMs) {
-      const target = this.pickInvitee();
-      if (target === null) return null;
-      this.room.invitedForCurrentTopic = true;
-      return this.fireAutomatic('invitation', target.id, now);
-    }
-
-    // 已邀答过、或当前是共同话题，持续冷场则换一个新话题。
-    if ((this.room.invitedForCurrentTopic || !isPopularTopic) && sinceAuto >= this.config.idle.topicMs) {
-      return this.fireAutomatic('topic', null, now);
-    }
+    // 二级：持续冷场只换一个话题。
+    // 点名邀答不再自动发生 —— 邀请特定成员必须由房主明确指定（见 handleMention），
+    // 否则房间一冷场就会有人被 AI 点名，像在催人发言。
+    if (sinceAuto >= this.config.idle.topicMs) return this.fireAutomatic(now);
     return null;
   }
 
-  private fireAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null, now: number): InvocationRecord | null {
+  private fireAutomatic(now: number): InvocationRecord | null {
     // 先按入队时间占位，避免同一轮重复触发；真正的冷却起点在输出结束后重设，
-    // 否则生成耗时会被算进等待期，话题刚发布就立刻邀答。
+    // 否则生成耗时会被算进等待期，话题刚发布就立刻再次触发。
     this.room.lastAutoAt = now;
     try {
       return this.enqueue({
         source: 'automatic',
-        purpose,
+        purpose: 'topic',
         callerMemberId: null,
-        invitedMemberId,
+        invitedMemberId: null,
         triggerMessageId: null,
         clientRequestId: null,
         prompt: null,
+        game: null,
       });
     } catch {
       // 自动触发失败不对外报错，下次轮询重新判断。
@@ -150,18 +153,21 @@ export class AiService {
   }
 
   /**
-   * 随机选择一名在线成员作为邀答目标，房主也在候选内。
+   * 房主点名邀请：文本里出现「邀请 / 点名」且包含某位在场成员的昵称，才算。
    *
-   * 目标选择依赖在线状态与成员列表，属于房间状态判定，因此留在应用层；
-   * 插件只通过 context.invitedMember 得知目标并生成话术。
+   * 只认这两个词，避免房主平时聊天提到成员名字（「小美说得对」）被误判成点名。
+   * 目标必须是其他成员：房主不会邀请自己。
    */
-  private pickInvitee(): MemberRecord | null {
-    const candidates = activeMembers(this.room).filter(
-      member => member.membership?.presence === 'online',
-    );
-    if (candidates.length === 0) return null;
-    const index = Math.floor(Math.random() * candidates.length);
-    return candidates[index] ?? null;
+  private findInviteTarget(text: string): MemberRecord | null {
+    if (!/(邀请|点名)/.test(text)) return null;
+    const guests = activeMembers(this.room)
+      .filter(
+        member =>
+          member.id !== this.room.hostMemberId && member.profile.nickname.trim().length > 0,
+      )
+      // 昵称更长的优先，避免「小美」被「小美美」截胡
+      .sort((left, right) => right.profile.nickname.length - left.profile.nickname.length);
+    return guests.find(member => text.includes(member.profile.nickname)) ?? null;
   }
 
   receiptFor(invocation: InvocationRecord | undefined): AiReceipt {
@@ -190,15 +196,34 @@ export class AiService {
     if (input.member.role !== 'host') return { status: 'ignored' };
 
     try {
+      // 游戏指令优先于普通提及：房主点「开始/下一题/结束」时，AI 这一轮主持游戏，
+      // 而不是把它当成「来找个话题」处理。
+      const command = detectGameCommand(input.message.text, this.room.game);
+      const prepared = command === null ? null : this.prepareGame(command);
+      const game = prepared?.view ?? null;
+      // 点名邀答只由房主发起：不开游戏的提及里出现「邀请/点名 + 成员昵称」才算。
+      const invited = game === null ? this.findInviteTarget(input.message.text) : null;
       const invocation = this.enqueue({
         source: 'host',
-        purpose: 'reply',
+        // 用途优先级：主持游戏 > 点名邀请 > 找话题 > 普通回复。
+        // 「帮我找个话题」「还有别的话题吗」不只是闲聊，而是明确的选题请求：
+        // 走 topic 用途才会产出话题草稿、更新当前话题，并在下次换话题时被排除。
+        purpose: game !== null
+          ? 'reply'
+          : invited !== null
+            ? 'invitation'
+            : wantsTopicIntent(input.message.text)
+              ? 'topic'
+              : 'reply',
         callerMemberId: input.member.id,
-        invitedMemberId: null,
+        invitedMemberId: invited?.id ?? null,
         triggerMessageId: input.message.id,
         clientRequestId: input.clientRequestId,
         prompt: input.message.text,
+        game,
       });
+      // 受理成功后才推进轮次：排队已满时不能把房间的游戏状态改掉。
+      if (command !== null && prepared !== null) this.applyGameCommand(command, prepared);
       return invocation.status === 'running'
         ? { status: 'running', invocationId: invocation.id }
         : { status: 'queued', invocationId: invocation.id };
@@ -207,11 +232,145 @@ export class AiService {
     }
   }
 
-  /** 自动触发：遇忙直接跳过，不进入等待队列。 */
-  triggerAutomatic(purpose: 'topic' | 'invitation', invitedMemberId: string | null = null): InvocationRecord | null {
+  /**
+   * 把「这一步该说什么」整理成给能力插件的游戏任务。
+   *
+   * 需要暗牌的玩法（二十问）在开局时抽一张，随本轮任务交给模型，整局固定；
+   * 返回的 secret 同时用于写进房间的游戏状态，下一轮继续带同一个。
+   */
+  private prepareGame(command: GameCommand): {
+    readonly view: CapabilityGameView;
+    readonly secret: string | null;
+  } {
+    const active = this.room.game;
+    const totalRounds = command.game.totalRounds;
+    let phase: 'start' | 'round' | 'end';
+    let round: number;
+    if (command.action === 'start') {
+      phase = 'start';
+      round = 1;
+    } else if (command.action === 'end') {
+      phase = 'end';
+      round = active?.round ?? totalRounds;
+    } else {
+      phase = 'round';
+      round = Math.min((active?.round ?? 0) + 1, totalRounds);
+    }
+
+    const secret = command.action === 'start'
+      ? pickSecret(command.game)
+      : active?.secret ?? null;
+    const state: GameHostState = {
+      phase,
+      round,
+      totalRounds,
+      ...(secret === null ? {} : { secret }),
+      ...(phase === 'end' ? { endReason: 'manual' as const } : {}),
+    };
+
+    return {
+      view: {
+        gameId: command.game.id,
+        name: command.game.name,
+        emoji: command.game.emoji,
+        phase,
+        round,
+        totalRounds,
+        instruction: gameTask(command.game, state),
+      },
+      secret,
+    };
+  }
+
+  /** 轮次推进由应用层负责；模型只负责话术，不决定游戏状态。 */
+  private applyGameCommand(
+    command: GameCommand,
+    prepared: { readonly view: CapabilityGameView; readonly secret: string | null },
+  ): void {
+    const game = prepared.view;
+    switch (command.action) {
+      case 'start':
+        this.room.game = {
+          gameId: game.gameId,
+          round: 1,
+          totalRounds: game.totalRounds,
+          startedAt: isoTime(),
+          ...(prepared.secret === null ? {} : { secret: prepared.secret }),
+        };
+        break;
+      case 'next':
+        if (this.room.game !== null && this.room.game.gameId === game.gameId) {
+          this.room.game.round = game.round;
+        }
+        break;
+      case 'end':
+        this.room.game = null;
+        break;
+    }
+  }
+
+  /**
+   * 自动触发：遇忙直接跳过，不进入等待队列。
+   * 只支持补话题；点名邀答必须由房主发起，参数保留是为了兼容既有调用方。
+   */
+  triggerAutomatic(_purpose: 'topic' = 'topic'): InvocationRecord | null {
     if (this.autoPaused || this.room.closed) return null;
+    // 游戏进行中不插自动话题：AI 正在主持，冷场补话会和游戏话术打架。
+    if (this.room.game !== null) return null;
     if (this.room.running !== null || this.room.queue.length > 0) return null;
-    return this.fireAutomatic(purpose, invitedMemberId, Date.now());
+    return this.fireAutomatic(Date.now());
+  }
+
+  /**
+   * 成员每发一条消息都看一眼：正在玩「二十问」且猜中暗牌时，自动收尾。
+   *
+   * 收尾是房主视角的一次「回答」：AI 会先说「猜对了！」再公布答案，
+   * 不需要房主再点「下一问」或「结束」。猜中后立即清空 game，避免同一句重复触发。
+   */
+  observeMemberMessage(message: MemberMessageRecord): InvocationRecord | null {
+    const game = this.room.game;
+    if (game === null || game.secret === undefined || this.room.closed) return null;
+    if (!guessedSecret(message.text, game.secret)) return null;
+
+    const plugin = findGame(game.gameId);
+    if (plugin === null) return null;
+
+    const guesser = this.room.members.get(message.authorId);
+    const state: GameHostState = {
+      phase: 'end',
+      round: game.round,
+      totalRounds: game.totalRounds,
+      secret: game.secret,
+      endReason: 'guessed',
+      ...(guesser === undefined ? {} : { guesserName: guesser.profile.nickname }),
+    };
+    const view: CapabilityGameView = {
+      gameId: plugin.id,
+      name: plugin.name,
+      emoji: plugin.emoji,
+      phase: 'end',
+      round: game.round,
+      totalRounds: game.totalRounds,
+      instruction: gameTask(plugin, state),
+    };
+
+    try {
+      const invocation = this.enqueue({
+        source: 'automatic',
+        purpose: 'reply',
+        callerMemberId: message.authorId,
+        invitedMemberId: null,
+        triggerMessageId: message.id,
+        clientRequestId: null,
+        prompt: message.text,
+        game: view,
+      });
+      // 受理成功才结束这一局：入队失败时保留游戏，房主还能手动收尾。
+      this.room.game = null;
+      return invocation;
+    } catch {
+      return null;
+    }
   }
 
   private enqueue(input: EnqueueInput): InvocationRecord {
@@ -240,6 +399,7 @@ export class AiService {
     };
     this.room.invocations.set(invocation.id, invocation);
     this.prompts.set(invocation.id, input.prompt);
+    if (input.game !== null) this.gameViews.set(invocation.id, input.game);
     this.room.queue.push(invocation.id);
     invocation.queuePosition = this.room.queue.length;
 
@@ -383,6 +543,45 @@ export class AiService {
     }
   }
 
+  /**
+   * 最近的发言上下文，包含 AI 自己已经说完的话。
+   *
+   * 只拼成员消息时模型没有「我上一轮说过什么」的记忆：连问几次「还有别的话题吗」
+   * 会反复给同一类话题，追问同一件事也接不上（真实会话里连续三轮都在聊电影）。
+   * AI 回复按 startedSequence 与成员消息一起排序，取最近 20 条；
+   * 只收 completed 且非空的回复 —— 失败/取消留下的半句话会污染上下文。
+   */
+  private recentSpeakers(): CapabilityMessageView[] {
+    const entries: { readonly sequence: number; readonly message: CapabilityMessageView }[] = [];
+    for (const message of this.room.messages) {
+      entries.push({
+        sequence: message.createdSequence,
+        message: {
+          authorId: message.authorId,
+          nickname: this.room.members.get(message.authorId)?.profile.nickname ?? message.authorId,
+          text: message.text,
+          createdAt: message.createdAt,
+        },
+      });
+    }
+    for (const reply of this.room.replies.values()) {
+      if (reply.status !== 'completed' || !/\S/.test(reply.text)) continue;
+      entries.push({
+        sequence: reply.startedSequence,
+        message: {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: reply.text,
+          createdAt: reply.createdAt,
+        },
+      });
+    }
+    return entries
+      .sort((a, b) => a.sequence - b.sequence)
+      .slice(-20)
+      .map((entry) => entry.message);
+  }
+
   private buildContext(invocation: InvocationRecord, signal: AbortSignal): CapabilityContext {
     const view = (member: MemberRecord): CapabilityMemberView => ({
       memberId: member.id,
@@ -399,12 +598,7 @@ export class AiService {
       caller: caller ? view(caller) : null,
       invitedMember: invited ? view(invited) : null,
       members: activeMembers(this.room).map(view),
-      recentMessages: this.room.messages.slice(-20).map(message => ({
-        authorId: message.authorId,
-        nickname: this.room.members.get(message.authorId)?.profile.nickname ?? message.authorId,
-        text: message.text,
-        createdAt: message.createdAt,
-      })),
+      recentMessages: this.recentSpeakers(),
       currentTopic: this.room.currentTopic === null
         ? null
         : {
@@ -413,6 +607,7 @@ export class AiService {
             kind: this.room.currentTopic.kind,
           },
       prompt: this.prompts.get(invocation.id) ?? null,
+      game: this.gameViews.get(invocation.id) ?? null,
       signal,
     };
   }
@@ -435,6 +630,7 @@ export class AiService {
     invocation.expiresAt = null;
     invocation.queuePosition = null;
     this.prompts.delete(invocation.id);
+    this.gameViews.delete(invocation.id);
 
     // 自动发话的后续冷却从输出真正结束时开始计算，
     // 否则生成耗时会被算进等待期，成员没有实际回应时间。
@@ -465,6 +661,7 @@ export class AiService {
     invocation.finishedAt = isoTime();
     invocation.error = { code, message, retryAfterMs: null };
     this.prompts.delete(invocation.id);
+    this.gameViews.delete(invocation.id);
     this.bus.publish('ai.invocation.updated', { invocation: wireInvocation(this.room, invocation) }, invocation.createdSequence);
   }
 
@@ -479,8 +676,6 @@ export class AiService {
       sourceUrl: draft.sourceUrl ?? null,
       publishedAt: isoTime(),
     };
-    // 新话题开始，重置本话题的邀答额度。
-    this.room.invitedForCurrentTopic = false;
     // 后续冷却以话题公开时刻为起点，给成员留下实际回应时间。
     this.room.lastAutoAt = Date.now();
     // 当前话题按 PRD 单独公开，不做入房前可见性过滤。
@@ -513,4 +708,40 @@ export class AiService {
       this.room.running = null;
     }
   }
+}
+
+/**
+ * 房主这句提及是不是在要话题（而不是问事实或随口聊）。
+ *
+ * 只认「找/换/来/给/推荐 + 话题」和「还有(有没有)…话题」这类明确说法：
+ * - 「帮我找个话题」「还有别的话题吗」「电影之外还有什么话题」→ topic
+ * - 「帮我们聊起来」「《当尼采哭泣》讲了什么」→ reply
+ *
+ * 用 topic 用途处理才会产出话题草稿并更新房间当前话题；一直是 reply 的话，
+ * 模型抛的话题只是普通文本，下一轮换话题时也没有「最近聊过」可排除。
+ */
+const TOPIC_INTENT =
+  /(找|换|来|给|推荐|出)[^。！？\n]{0,8}(话题|方向)|(还有|有没有)[^。！？\n]{0,6}(话题|方向)|聊点别的|没话聊|冷场/;
+
+export function wantsTopicIntent(text: string): boolean {
+  return TOPIC_INTENT.test(text);
+}
+
+/** 猜中判定用：去掉空白与全部标点，再做包含匹配（「是《千与千寻》吗」也能命中）。 */
+const normalizeGuess = (value: string): string => value.toLowerCase().replace(/[\s\p{P}]/gu, '');
+
+/**
+ * 这条消息是不是在「猜答案」。
+ *
+ * 只做包含匹配会把闲聊误判成猜中（暗牌是「地铁」时，一句「我今天坐地铁来的」就结束了游戏），
+ * 所以还要求消息本身有猜测语气：正好是答案、以「是/猜/答案」开头，或以问号/吗/吧/呢结尾。
+ */
+export function guessedSecret(text: string, secret: string): boolean {
+  const guess = normalizeGuess(text);
+  const answer = normalizeGuess(secret);
+  if (answer.length === 0 || !guess.includes(answer)) return false;
+  const trimmed = text.trim();
+  if (guess === answer) return true;
+  if (/^(是|猜|答案)/.test(trimmed)) return true;
+  return /[?？吗吧呢]$/.test(trimmed);
 }

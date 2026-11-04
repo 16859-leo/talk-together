@@ -297,7 +297,6 @@ test('[R2-4] 共同话题持续冷场不发起邀答', async t => {
   const base = Date.now();
   room.lastMemberMessageAt = base;
   room.lastAutoAt = base;
-  room.invitedForCurrentTopic = false;
 
   const fired = service.aiService(host.roomId).tickIdle(base + 46_000);
   assert.notEqual(fired?.purpose, 'invitation', '共同话题不应进入邀答分支');
@@ -305,7 +304,7 @@ test('[R2-4] 共同话题持续冷场不发起邀答', async t => {
   assert.equal(fired?.purpose, 'topic');
 });
 
-test('[R2-4] 热门话题持续冷场才发起邀答', async t => {
+test('[R2-4] 热门话题持续冷场也只换话题，不会自动点名', async t => {
   const h = await harness(testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } }));
   t.after(() => h.close());
 
@@ -319,11 +318,10 @@ test('[R2-4] 热门话题持续冷场才发起邀答', async t => {
   const base = Date.now();
   room.lastMemberMessageAt = base;
   room.lastAutoAt = base;
-  room.invitedForCurrentTopic = false;
 
   const fired = service.aiService(host.roomId).tickIdle(base + 46_000);
-  assert.equal(fired?.purpose, 'invitation');
-  assert.ok(fired?.invitedMemberId);
+  assert.equal(fired?.purpose, 'topic');
+  assert.equal(fired?.invitedMemberId, null, '自动触发不能点名任何成员');
 });
 
 test('[R2-5] 冷却从话题发布后开始，生成耗时不计入等待期', async t => {
@@ -369,12 +367,13 @@ test('[R2-5] 冷却从话题发布后开始，生成耗时不计入等待期', a
     `冷却起点早于话题发布：lastAutoAt=${room.lastAutoAt} published=${publishedAt}`,
   );
 
-  // 话题刚发布、未到邀答等待时间，不应立刻邀答。
+  // 话题刚发布、冷却未满：不应立刻再触发任何自动调用。
   room.lastMemberMessageAt = publishedAt - 10_000;
   const immediate = ai.tickIdle(publishedAt + 20);
-  assert.notEqual(immediate?.purpose, 'invitation', '话题刚发布就邀答，没给成员回应时间');
+  assert.equal(immediate, null, '话题刚发布就再触发，没给成员回应时间');
 
-  // 等待期满后才允许邀答。
-  const later = ai.tickIdle(room.lastAutoAt + 80);
-  assert.equal(later?.purpose, 'invitation');
+  // 冷却期满后继续补话题（自动调用只会是 topic，不会点名）。
+  const later = ai.tickIdle(room.lastAutoAt + 200);
+  assert.equal(later?.purpose, 'topic');
+  assert.equal(later?.invitedMemberId, null);
 });

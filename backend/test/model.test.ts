@@ -13,6 +13,7 @@ import {
   SYSTEM_PROMPT,
 } from '../src/infrastructure/model/prompts.ts';
 import type { GenerationRequest, MemberView } from '../src/infrastructure/model/types.ts';
+import { AI_SPEAKER_AUTHOR_ID, AI_SPEAKER_NICKNAME } from '../src/domain/room.ts';
 
 // ---------- 输出清洗（真实缺陷回归） ----------
 
@@ -143,8 +144,31 @@ test('清洗：正常短句原样保留', () => {
 // ---------- 质量闸门 ----------
 
 test('闸门：拦截复述成员原话', () => {
-  const recent = [{ text: '我觉得远程办公挺好的，省通勤' }];
-  assert.equal(rejectOutput('小林：我觉得远程办公挺好的，省通勤', recent), 'LOOKS_LIKE_TRANSCRIPT');
+  const recent = [{ text: '我觉得远程办公挺好的，省通勤', nickname: '小林' }];
+  assert.equal(
+    rejectOutput('小林：我觉得远程办公挺好的，省通勤', recent, ['小林']),
+    'LOOKS_LIKE_TRANSCRIPT',
+  );
+});
+
+test('闸门：引导语带冒号不误判为转录（真实缺陷回归）', () => {
+  // AI 说「换个话题：你露营时拍过哪张照片…」被连续三轮判成转录，最后报
+  // 「模型未产出可用文本」。冒号前的短标签不是任何成员昵称，就不该拦。
+  const recent = [{ text: '你还有没有其他话题', nickname: '小帅' }];
+  assert.equal(
+    rejectOutput('换个话题：你露营时拍过哪张最难忘的照片？', recent, ['小帅']),
+    null,
+  );
+  assert.equal(rejectOutput('补充一下：你们露营一般带什么装备？', recent, ['小帅']), null);
+});
+
+test('闸门：冒号前确实是成员昵称才算转录', () => {
+  const recent = [{ text: '我觉得远程办公挺好的，省通勤', nickname: '小林' }];
+  assert.equal(rejectOutput('小帅：换个话题聊聊露营吧', recent, ['小林', '小帅']), 'LOOKS_LIKE_TRANSCRIPT');
+});
+
+test('闸门：没有昵称信息时保持旧的保守判断', () => {
+  assert.equal(rejectOutput('换个话题：你们露营一般带什么装备？', []), 'LOOKS_LIKE_TRANSCRIPT');
 });
 
 test('闸门：拦截不带昵称前缀的复述', () => {
@@ -244,11 +268,91 @@ test('提示词：邀答分支点名目标、带出话题标题且不调用工�
   assert.ok(p.includes('不要调用任何工具'));
 });
 
-test('提示词：reply 分支要求有实质内容', () => {
+test('提示词：reply 分支按房主要求分派任务，不再一律抛话题', () => {
   const caller: MemberView = { memberId: 'a', nickname: '小林', interestTags: [], bio: '' };
-  const p = buildUserPrompt(makeRequest({ purpose: 'reply', caller, prompt: '找个话题' }));
-  assert.ok(p.includes('实质内容'));
+  const p = buildUserPrompt(
+    makeRequest({ purpose: 'reply', caller, prompt: '《当尼采哭泣》讲了什么' }),
+  );
+  assert.ok(p.includes('search_zhihu_knowledge'), '问事实时应引导查资料，而不是凭印象回答');
+  assert.ok(p.includes('不要凭印象编'));
+  assert.ok(p.includes('总结'), '应支持总结聊天');
+  assert.ok(p.includes('活动'), '应支持建议破冰活动');
   assert.ok(p.includes('不要用大段客套'));
+});
+
+test('提示词：最近发言包含 AI 自己的话时会明确标注，避免重复', () => {
+  const caller: MemberView = { memberId: 'a', nickname: '小林', interestTags: [], bio: '' };
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'reply',
+      caller,
+      prompt: '还有别的话题吗',
+      recentMessages: [
+        {
+          authorId: 'a',
+          nickname: '小林',
+          text: '有没有别的话题',
+          createdAt: '2026-11-04T10:00:00.000Z',
+        },
+        {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: '你们最难忘的一次旅行是去哪？',
+          createdAt: '2026-11-04T10:00:05.000Z',
+        },
+      ],
+    }),
+  );
+  assert.ok(p.includes(`${AI_SPEAKER_NICKNAME}: 你们最难忘`), 'AI 历史要作为发言列出');
+  assert.ok(p.includes('你自己之前说的话'), '要显式告诉模型这是它自己说的，否则会重复');
+});
+
+test('提示词：选题分支要求换一个方向，不要复述上一轮', () => {
+  const p = buildUserPrompt(makeRequest({ purpose: 'topic' }));
+  assert.ok(p.includes('换话题要真的换'));
+});
+
+test('提示词：游戏主持轮次带上游戏名、轮次和插件任务', () => {
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'reply',
+      prompt: '来玩默契二选一',
+      game: {
+        gameId: 'this-or-that',
+        name: '默契二选一',
+        emoji: '⚖️',
+        phase: 'round',
+        round: 2,
+        totalRounds: 5,
+        instruction: '先点评票型，再出下一道二选一。',
+      },
+    }),
+  );
+  assert.ok(p.includes('「默契二选一」'));
+  assert.ok(p.includes('第 2/5 轮'));
+  assert.ok(p.includes('先点评票型'));
+  assert.ok(p.includes('100 字'));
+});
+
+test('提示词：已经聊过话题后，选题改用热榜换领域', () => {
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'topic',
+      recentMessages: [
+        {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: '你们最难忘的一次旅行是去哪？',
+          createdAt: '2026-11-04T10:00:05.000Z',
+        },
+      ],
+    }),
+  );
+  assert.ok(p.includes('get_hot_list'), '换话题时应改用热榜');
+  assert.ok(
+    !p.includes('共同兴趣标签：摄影'),
+    '已聊过话题时不能再围绕同一批兴趣关键词检索，否则会一直在同一类话题里打转',
+  );
 });
 
 test('提示词：reply 分支带上房主正文', () => {

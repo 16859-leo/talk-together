@@ -35,6 +35,21 @@ export interface TopicView {
   readonly content: string;
 }
 
+/**
+ * 插件式游戏的当前轮次。
+ *
+ * 与 `CapabilityGameView` 同形：任务文案由游戏插件给出，模型只负责照着主持。
+ */
+export interface GameView {
+  readonly gameId: string;
+  readonly name: string;
+  readonly emoji: string;
+  readonly phase: 'start' | 'round' | 'end';
+  readonly round: number;
+  readonly totalRounds: number;
+  readonly instruction: string;
+}
+
 /** 一次生成请求。字段取自 CapabilityContext，但不含 roomId 等编排无关项。 */
 export interface GenerationRequest {
   readonly purpose: GenerationPurpose;
@@ -47,6 +62,8 @@ export interface GenerationRequest {
   readonly caller: MemberView | null;
   /** 仅 invitation 非空，目标由应用层选定。 */
   readonly invitedMember: MemberView | null;
+  /** 主持游戏时才有；其余调用为空。 */
+  readonly game?: GameView | null;
   readonly signal: AbortSignal;
 }
 

@@ -65,6 +65,9 @@ export const build = async ({ config, capability, store, bodyLimit }: BuildOptio
   const app = Fastify({
     logger: false,
     genReqId: () => newId('req'),
+    // 尾斜杠不应改变路由语义：`/api/v1/rooms/` 与 `/api/v1/rooms` 等价。
+    // 否则客户端把 base 写成带尾斜杠时，会得到 404 + ROOM_UNAVAILABLE 这种误导性错误。
+    ignoreTrailingSlash: true,
     ...(bodyLimit === undefined ? {} : { bodyLimit }),
   });
   const service = store

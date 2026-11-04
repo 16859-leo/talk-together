@@ -3,6 +3,17 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { MemberCard } from '../features/room/MemberCard'
 import { ChatFeed } from '../features/chat/ChatFeed'
 import { Composer } from '../features/chat/Composer'
+import { TopicSuggestionBar } from '../features/chat/TopicSuggestionBar'
+import { splitFeeds } from '../features/chat/topicSuggestion'
+import { GameShelf } from '../features/games/GameShelf'
+import {
+  isGameCommandText,
+  isGuessedEnding,
+  loadActiveGame,
+  saveActiveGame,
+  type ActiveGame,
+  type GameDefinition,
+} from '../features/games/catalog'
 import { InviteDialog } from '../features/room/InviteDialog'
 import { ProfileDialog } from '../features/room/ProfileDialog'
 import type { JoinValues } from '../features/join/ProfileForm'
@@ -76,6 +87,10 @@ export default function RoomPage() {
   const [policy, setPolicy] = useState<ValidationPolicy>(FALLBACK_POLICY)
   /** 限频冷却截止时间，交给 Composer 倒计时并禁用发送 */
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
+  /** 用户收起过的自动话题建议；来了新的一条会重新显示 */
+  const [dismissedSuggestionId, setDismissedSuggestionId] = useState<string | null>(null)
+  /** 房主当前开的游戏；轮次由后端管，这里只记「开没开」并按房间存进会话存储 */
+  const [activeGame, setActiveGame] = useState<ActiveGame | null>(() => loadActiveGame(roomId))
   /** 进入终态后不再建连、不再归并事件 */
   const [terminal, setTerminal] = useState(false)
   const pendingSend = useRef<OutgoingDraft | null>(null)
@@ -96,12 +111,23 @@ export default function RoomPage() {
     setEnded(null)
     setNotice(null)
     setTerminal(false)
+    setActiveGame(loadActiveGame(roomId))
     return () => {
       // 卸载后旧回执必须失效：新组件用的是另一个 ref，只递增 token 不够
       epochRef.current = expireEpoch(epochRef.current)
       dispatch({ type: 'reset' })
     }
   }, [roomId])
+
+  // 二十问猜中后 AI 会自动收尾：把「进行中」卡片收起来，别让按钮挂在一局已结束的游戏上。
+  useEffect(() => {
+    if (activeGame === null) return
+    const lastAi = [...state.messages].reverse().find((message) => message.kind === 'ai')
+    if (lastAi !== undefined && lastAi.kind === 'ai' && isGuessedEnding(lastAi.text)) {
+      setActiveGame(null)
+      saveActiveGame(roomId, null)
+    }
+  }, [state.messages, activeGame, roomId])
 
   /** 只有 membership 还在，才谈得上调用房间级接口 */
   const activeSession =
@@ -343,6 +369,14 @@ export default function RoomPage() {
   const statusText = STATUS_TEXT[status]
   const runningInvocation = state.invocations.find((item) => item.status === 'running')
   const queuedCount = state.invocations.filter((item) => item.status === 'queued').length
+  // 冷场自动补的话题不进聊天记录，单独一条实时建议显示在输入框上方。
+  const { chat, suggestion } = splitFeeds(state.messages, state.invocations)
+  // 房主点游戏按钮产生的指令（「@AI 下一问」等）是操作，不当作聊天内容展示。
+  const chatMessages = chat.filter(
+    (message) => !(message.kind === 'member' && isGameCommandText(message.text)),
+  )
+  const visibleSuggestion =
+    suggestion !== null && suggestion.replyId !== dismissedSuggestionId ? suggestion : null
 
   async function handleSend(text: string, mentions: 'ai'[]): Promise<boolean> {
     if (!session || !activeSession) {
@@ -439,6 +473,38 @@ export default function RoomPage() {
       setNotice(error.message)
       return false
     }
+  }
+
+  /** 房主点名邀请：发一条普通 @AI 消息，后端识别「邀请 + 昵称」后走邀答用途。 */
+  async function inviteMember(member: ActiveMember): Promise<void> {
+    await handleSend(`@AI 邀请${member.profile.nickname}聊聊`, ['ai'])
+  }
+
+  // 游戏按钮就是替房主发一条 @AI 的话；轮次推进由后端按文本识别，前端只记开没开。
+  async function startGame(game: GameDefinition): Promise<void> {
+    const ok = await handleSend(game.startText, ['ai'])
+    if (!ok) return
+    const next: ActiveGame = { gameId: game.id, round: 1 }
+    setActiveGame(next)
+    saveActiveGame(roomId, next)
+  }
+
+  async function advanceGame(game: GameDefinition): Promise<void> {
+    const ok = await handleSend(game.nextText, ['ai'])
+    if (!ok || activeGame === null) return
+    const next: ActiveGame = {
+      gameId: activeGame.gameId,
+      round: Math.min(activeGame.round + 1, game.totalRounds),
+    }
+    setActiveGame(next)
+    saveActiveGame(roomId, next)
+  }
+
+  async function stopGame(game: GameDefinition): Promise<void> {
+    const ok = await handleSend(game.stopText, ['ai'])
+    if (!ok) return
+    setActiveGame(null)
+    saveActiveGame(roomId, null)
   }
 
   async function handleLeave() {
@@ -733,7 +799,13 @@ export default function RoomPage() {
             )}
             <h2 className="pb-2.5 text-[16px] font-bold">聊天</h2>
             <hr className="rule" />
-            <ChatFeed messages={state.messages} />
+            <ChatFeed messages={chatMessages} />
+            {visibleSuggestion !== null && (
+              <TopicSuggestionBar
+                suggestion={visibleSuggestion}
+                onDismiss={() => setDismissedSuggestionId(visibleSuggestion.replyId)}
+              />
+            )}
             <Composer
               canMention={canMention}
               disabled={composerDisabled}
@@ -748,6 +820,23 @@ export default function RoomPage() {
           </section>
 
           <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-[38px_32px_40px_34px] border border-rule-soft bg-paper p-5 shadow-soft no-scrollbar">
+            {/* 游戏按钮只给房主：点下去等于房主发一条 @AI，AI 负责主持 */}
+            {canMention && !state.closed && (
+              <GameShelf
+                active={activeGame}
+                disabled={composerDisabled}
+                busy={runningInvocation !== undefined}
+                onStart={(game) => {
+                  void startGame(game)
+                }}
+                onNext={(game) => {
+                  void advanceGame(game)
+                }}
+                onStop={(game) => {
+                  void stopGame(game)
+                }}
+              />
+            )}
             <div>
               <div className="mb-2.5 flex items-center justify-between">
                 <h2 className="text-[16px] font-bold">一桌五人</h2>
@@ -766,6 +855,15 @@ export default function RoomPage() {
                       Boolean(canMention) && member.role !== 'host' && member.id !== self?.memberId
                     }
                     onRemove={setRemoveTarget}
+                    canInvite={
+                      Boolean(canMention) &&
+                      member.role !== 'host' &&
+                      member.id !== self?.memberId &&
+                      member.membership?.presence !== 'offline'
+                    }
+                    onInvite={(target) => {
+                      void inviteMember(target)
+                    }}
                   />
                 ))}
               </div>

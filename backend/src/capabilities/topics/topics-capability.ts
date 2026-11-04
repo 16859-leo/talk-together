@@ -26,6 +26,7 @@ import type {
 } from '../../infrastructure/model/types.ts';
 import { isNonBlankText } from '../../infrastructure/zhihu/types.ts';
 import { CapabilityError } from '../../infrastructure/zhihu/types.ts';
+import { AppError } from '../../domain/errors.ts';
 
 function toMemberView(member: CapabilityMemberView): MemberView {
   return {
@@ -65,19 +66,31 @@ export class TopicsCapability implements Capability {
       prompt: context.prompt,
       caller: context.caller === null ? null : toMemberView(context.caller),
       invitedMember: context.invitedMember === null ? null : toMemberView(context.invitedMember),
+      game: context.game ?? null,
       signal: context.signal,
     };
 
-    for await (const chunk of this.#generator.generate(request)) {
-      if (chunk.kind === 'topic') {
-        const { title, content, kind, sourceLabel, sourceUrl } = chunk.topic;
-        // 契约 NonBlankText 兜底：生成器已保证，这里再防一道，
-        // 不合格则跳过草稿但不影响文本输出（话题不是每次都必须有）。
-        if (!isNonBlankText(title) || !isNonBlankText(content)) continue;
-        yield { kind: 'topic', topic: { title, content, kind, sourceLabel, sourceUrl } };
-      } else {
-        yield { kind: 'text', delta: chunk.delta };
+    try {
+      for await (const chunk of this.#generator.generate(request)) {
+        if (chunk.kind === 'topic') {
+          const { title, content, kind, sourceLabel, sourceUrl } = chunk.topic;
+          // 契约 NonBlankText 兜底：生成器已保证，这里再防一道，
+          // 不合格则跳过草稿但不影响文本输出（话题不是每次都必须有）。
+          if (!isNonBlankText(title) || !isNonBlankText(content)) continue;
+          yield { kind: 'topic', topic: { title, content, kind, sourceLabel, sourceUrl } };
+        } else {
+          yield { kind: 'text', delta: chunk.delta };
+        }
       }
+    } catch (error) {
+      // 应用层用 AppError 识别失败原因；插件内部抛的是 CapabilityError。
+      // 不在这里转换的话，toFailure 会把任何非 AppError 统一降级成
+      // AI_UNAVAILABLE，导致 AI_PROVIDER_ERROR / AI_RATE_LIMITED / AI_TIMEOUT
+      // 等契约错误码在事件里丢失。
+      if (error instanceof CapabilityError) {
+        throw new AppError(error.code, error.message, { retryAfterMs: error.retryAfterMs });
+      }
+      throw error;
     }
   }
 }

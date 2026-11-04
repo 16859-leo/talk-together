@@ -7,8 +7,23 @@ import type {
 /**
  * 默认走同源 + Vite 代理；联调时用 VITE_API_BASE 指向真实后端，
  * 例如 VITE_API_BASE=http://127.0.0.1:8787/api/v1
+ *
+ * 末尾斜杠会拼出 `//rooms` 这样的路径，后端会当 404 返回，
+ * 而契约里 404 的 code 是 ROOM_UNAVAILABLE —— 界面上就会变成
+ * 「房间不存在，或者已经关闭了」，和真实原因（配置写错）完全不搭。
+ * 这里统一去掉末尾斜杠；空串回落到默认同源路径。
  */
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
+export function normalizeApiBase(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().replace(/\/+$/, '')
+  return trimmed.length > 0 ? trimmed : '/api/v1'
+}
+
+const BASE = normalizeApiBase(import.meta.env.VITE_API_BASE as string | undefined)
+
+if (import.meta.env.DEV) {
+  // 联调时第一眼看 console 就知道请求打到哪，省得对着 404 猜
+  console.info(`[api] base = ${BASE}`)
+}
 
 /** 契约版本对不上只提醒一次，不打断联调。 */
 let versionWarned = false

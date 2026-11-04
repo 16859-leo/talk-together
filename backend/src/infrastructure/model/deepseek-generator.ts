@@ -22,10 +22,18 @@ import { createDeepSeek } from '@ai-sdk/deepseek';
 import { z } from 'zod';
 
 import { CapabilityError } from '../zhihu/types.ts';
+import type { KnowledgeSnippet, TopicCandidate } from '../zhihu/types.ts';
 import type { ZhihuTopicSource } from '../zhihu/topic-source.ts';
-import type { TopicCandidate } from '../zhihu/types.ts';
+import { AI_SPEAKER_AUTHOR_ID } from '../../domain/room.ts';
 import { SYSTEM_PROMPT, buildUserPrompt, commonInterestTags } from './prompts.ts';
-import { MAX_TEXT_LENGTH, MIN_TEXT_LENGTH, analyzeOutput, cleanOutput, rejectOutput } from './sanitize.ts';
+import {
+  MAX_REPLY_TEXT_LENGTH,
+  MAX_TEXT_LENGTH,
+  MIN_TEXT_LENGTH,
+  analyzeOutput,
+  cleanOutput,
+  rejectOutput,
+} from './sanitize.ts';
 import type { GenerationChunk, GenerationRequest, TextGenerator } from './types.ts';
 
 export interface DeepSeekGeneratorOptions {
@@ -64,6 +72,12 @@ interface ToolPayload {
   readonly hint: string;
 }
 
+/** 资料检索的工具载荷：摘要 + 使用约束提示。 */
+interface KnowledgePayload {
+  readonly results: readonly KnowledgeSnippet[];
+  readonly hint: string;
+}
+
 export class DeepSeekTextGenerator implements TextGenerator {
   readonly #model: LanguageModel;
   readonly #maxSteps: number;
@@ -85,6 +99,17 @@ export class DeepSeekTextGenerator implements TextGenerator {
   }
 
   async *generate(request: GenerationRequest): AsyncIterable<GenerationChunk> {
+    // 转录判定需要「谁在说话」：只有冒号前确实是房间成员的昵称才算复述。
+    const memberNicknames = request.members.map((member) => member.nickname);
+    // 质量闸门只看真人说过的话。AI 自己的历史留在上下文里帮它避免重复，
+    // 但不能参与「复述原话」判定：追问同一部作品时，回答开头撞上自己上一句
+    // 会被误杀（真实现象：用户追问「再讲讲」，模型回答被 ECHOES_USER_MESSAGE 拦掉）。
+    const memberMessages = request.recentMessages.filter(
+      (message) => message.authorId !== AI_SPEAKER_AUTHOR_ID,
+    );
+    // 回答类回复比抛话题需要更多篇幅：70 字会把「讲了什么」拦腰截断。
+    const maxLength =
+      request.purpose === 'reply' ? MAX_REPLY_TEXT_LENGTH : MAX_TEXT_LENGTH;
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
       // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
       const state: SelectionState = { selected: null, pending: null, selectedAtLength: null };
@@ -93,7 +118,9 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
       // exactOptionalPropertyTypes 下不能显式传 tools: undefined，改为条件展开。
       // invitation 不需要工具：目标已由应用层选定，只生成话术。
-      const toolOption = request.purpose === 'invitation' ? {} : { tools };
+      // 游戏主持同理：任务文案已给定，不挂任何工具。
+      const hostingGame = request.game !== undefined && request.game !== null;
+      const toolOption = request.purpose === 'invitation' || hostingGame ? {} : { tools };
 
       // SDK 把错误放入流事件而非抛出，用 onError 显式捕获再映射。
       let streamError: unknown = null;
@@ -148,21 +175,21 @@ export class DeepSeekTextGenerator implements TextGenerator {
             yield { kind: 'topic', topic: state.selected };
           }
 
-          const analysis = analyzeOutput(raw);
+          const analysis = analyzeOutput(raw, maxLength);
           if (analysis.headSettled) headSettled = true;
           // 前导还可能被改写（如「主持」后面补上「发言：」）：继续缓冲，一个字都不发。
           if (!headSettled) continue;
 
           // 末尾留一个字符不急于交付：包裹引号、尾部围栏等只在行尾成立，
           // 拿到下一个字符才能确定它是否会被剥掉。
-          const target = Math.min(analysis.text.length - 1, MAX_TEXT_LENGTH - 1);
+          const target = Math.min(analysis.text.length - 1, maxLength - 1);
           if (target <= emitted.length) continue;
           if (!analysis.text.startsWith(emitted)) {
             throw new CapabilityError('AI_PROVIDER_ERROR', '文本增量与清洗结果不一致');
           }
           // 质量闸门里「转录式复述」「复述成员原话」一旦成立就不会再变：
           // 失败回复会原样保留已广播的文字，所以必须在这里拦住，不能先发再判。
-          const earlyReject = rejectOutput(analysis.text, request.recentMessages);
+          const earlyReject = rejectOutput(analysis.text, memberMessages, memberNicknames);
           if (earlyReject === 'LOOKS_LIKE_TRANSCRIPT' || earlyReject === 'ECHOES_USER_MESSAGE') {
             continue;
           }
@@ -180,9 +207,11 @@ export class DeepSeekTextGenerator implements TextGenerator {
       }
       throwIfCancelled(request.signal);
 
-      const finalText = cleanOutput(raw);
+      const finalText = cleanOutput(raw, maxLength);
       const rejected =
-        finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
+        finalText.length === 0
+          ? 'TOO_SHORT'
+          : rejectOutput(finalText, memberMessages, memberNicknames);
 
       // 选题成功必须有草稿，且**实际交付的正文**要产生于检索结果之后。
       // 只检查原始字符非空不够：检索后只补了 `**` 或另起一行时，cleanOutput 会
@@ -190,7 +219,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
       const boundaryText =
         state.selectedAtLength === null
           ? ''
-          : analyzeOutput(raw.slice(0, state.selectedAtLength)).text;
+          : analyzeOutput(raw.slice(0, state.selectedAtLength), maxLength).text;
       const deliveredAfterSelection =
         boundaryText.length > 0 && finalText.startsWith(boundaryText)
           ? finalText.slice(boundaryText.length)
@@ -202,6 +231,24 @@ export class DeepSeekTextGenerator implements TextGenerator {
         postText.length >= MIN_TEXT_LENGTH && /[\p{L}\p{N}]/u.test(postText);
       const topicMissing =
         request.purpose === 'topic' && (state.selected === null || !postUsable);
+
+      // 排查用：模型输出被清洗/闸门拦掉时，事件里只看得到「失败」，
+      // 打开 AI_DEBUG=1 才能看到每一轮原文与拒绝原因（默认不输出）。
+      if (process.env['AI_DEBUG'] === '1') {
+        console.error(
+          '[ai-debug]',
+          JSON.stringify({
+            attempt,
+            purpose: request.purpose,
+            raw,
+            finalText,
+            rejected,
+            topicMissing,
+            emittedLength: emitted.length,
+            topicDraft: state.selected?.title ?? null,
+          }),
+        );
+      }
 
       if (rejected === null && !topicMissing) {
         // 草稿补发：正常路径草稿已在文本循环里先行发出，这里只作防御
@@ -243,6 +290,10 @@ export class DeepSeekTextGenerator implements TextGenerator {
     state: SelectionState,
     seenCalls: Set<string>,
   ): ToolSet {
+    // 主持游戏不用任何工具：任务文案已经由游戏插件给定，检索只会拖慢这一轮、
+    // 还可能把话题素材混进主持话术里。
+    if (request.game !== undefined && request.game !== null) return {};
+
     const shared = commonInterestTags(request.members);
     const allTags = [...new Set(request.members.flatMap((m) => m.interestTags))];
     /** 换话题场景下不要把当前话题再抛一次。 */
@@ -306,10 +357,11 @@ export class DeepSeekTextGenerator implements TextGenerator {
       }
     };
 
-    return {
+    const tools: ToolSet = {
       search_zhihu_topic: tool({
         description:
-          '按关键词检索知乎上适合破冰的话题。当成员兴趣标签存在交集、需要共同话题时调用；不要凭记忆编造话题。',
+          '按关键词检索知乎上适合破冰的话题。当成员兴趣标签存在交集、需要共同话题时调用；不要凭记忆编造话题。' +
+          '如果最近已经给过话题，关键词要换到其他领域，不要沿用上一次的方向。',
         inputSchema: z.object({
           keyword: z
             .string()
@@ -335,7 +387,8 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
       get_hot_list: tool({
         description:
-          '获取知乎热榜中适合破冰的话题。仅当成员兴趣没有交集、无法确定共同关键词时调用；返回已选定的那一条，直接据此向房间抛话题。',
+          '获取知乎热榜中适合破冰的话题。当成员兴趣没有交集、无法确定共同关键词，' +
+          '或者需要换到与之前不同领域的话题时调用；返回已选定的那一条，直接据此向房间抛话题。',
         inputSchema: z.object({
           limit: z.number().int().min(1).max(5).default(3),
         }),
@@ -352,12 +405,77 @@ export class DeepSeekTextGenerator implements TextGenerator {
         },
       }),
     };
+
+    // 房间里已经聊过话题后，选题只保留热榜：共同兴趣检索会反复命中同一批关键词，
+    // 只在提示词里写「换领域」约束不住（真实联调里模型仍会再检索一次电影）。
+    // 去掉工具是确定性保证，与「工具只返回首条、模型没得选」的思路一致。
+    const hadAiTurn = request.recentMessages.some(
+      (message) => message.authorId === AI_SPEAKER_AUTHOR_ID,
+    );
+    if (request.purpose === 'topic' && hadAiTurn) {
+      delete tools['search_zhihu_topic'];
+    }
+
+    // 资料检索只给普通回复用：选题时必须走话题工具，否则模型可能把一条百科摘要
+    // 当成话题抛出来，绕过去重、适宜性筛选和「当前话题」排除。
+    if (request.purpose === 'reply') {
+      tools['search_zhihu_knowledge'] = tool({
+        description:
+          '查询资料，用于回答「某个作品讲了什么」「某个人物、事件、概念是什么」这类事实性问题。' +
+          '只在房主问事实时调用；找聊天话题不要用它。回答必须以返回的摘要为准。',
+        inputSchema: z.object({
+          query: z
+            .string()
+            .min(1)
+            .describe('要查的对象，用名词短语，例如「当尼采哭泣 小说 内容」「费曼 是谁」'),
+          limit: z.number().int().min(1).max(4).default(3),
+        }),
+        execute: async ({ query, limit }): Promise<KnowledgePayload> => {
+          guard('search_zhihu_knowledge', { query, limit });
+          return searchKnowledge(this.#topics, query, limit, request.signal);
+        },
+      });
+    }
+
+    return tools;
   }
 }
 
 /** 取消检查：任何 yield 之前都必须调用，保证 abort 后不再产出。 */
 function throwIfCancelled(signal: AbortSignal): void {
   if (signal.aborted) throw new CapabilityError('AI_CANCELLED', '调用已取消');
+}
+
+/**
+ * 查资料。
+ *
+ * 上游失败不终止整轮生成：把「查不到」当作工具结果交给模型，
+ * 由提示词约束它别编（宁可说没查到，也不要胡诌情节）。只有取消才向上抛，
+ * 交给生成循环按 AI_CANCELLED 处理。
+ */
+async function searchKnowledge(
+  source: ZhihuTopicSource,
+  query: string,
+  limit: number,
+  signal: AbortSignal,
+): Promise<KnowledgePayload> {
+  if (signal.aborted) throw new CapabilityError('AI_CANCELLED', '调用已取消');
+  try {
+    const results = await source.searchKnowledge(query, { limit, signal });
+    if (results.length === 0) {
+      return { results: [], hint: '没有查到相关资料。直接说没查到，不要编。' };
+    }
+    return {
+      results,
+      hint: '只根据这些摘要回答，用口语说清结论；摘要里没有的细节不要补。',
+    };
+  } catch (error) {
+    if (error instanceof CapabilityError && error.code === 'AI_CANCELLED') throw error;
+    if (signal.aborted) {
+      throw new CapabilityError('AI_CANCELLED', '调用已取消', { cause: error });
+    }
+    return { results: [], hint: '资料暂时查不到。可以按常识简短回应，但不要编造具体细节。' };
+  }
 }
 
 /** 把 SDK 与网络错误映射为契约允许的错误码。 */

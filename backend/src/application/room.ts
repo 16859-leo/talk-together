@@ -550,12 +550,17 @@ export class RoomService {
       message.createdSequence,
     );
 
-    const ai = this.aiService(roomId).handleMention({
-      mentionsAi,
-      member,
-      message,
-      clientRequestId: body.clientRequestId,
-    });
+    const aiService = this.aiService(roomId);
+    // 先看是不是猜中了游戏暗牌：猜中就直接收尾，这一条不再走普通提及。
+    const guessEnd = aiService.observeMemberMessage(message);
+    const ai = guessEnd !== null
+      ? aiService.receiptFor(guessEnd)
+      : aiService.handleMention({
+          mentionsAi,
+          member,
+          message,
+          clientRequestId: body.clientRequestId,
+        });
     // 保存首次回执原文，供后续幂等重试原样回放。
     message.receipt = ai;
 

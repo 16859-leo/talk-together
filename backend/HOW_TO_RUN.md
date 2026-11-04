@@ -239,7 +239,13 @@ cd D:\作业\实践周\talk-together && npm run check --prefix contracts && cd b
 - 演练里的 AI 文本来自**假插件**（固定内容、不接任何模型），验证的是后端的调度与
   事件逻辑（队列、串行、取消、可见性）。默认 `npm start` 也使用假插件。
 - 真实选题与话术的 Agent 实现已合入，与应用层共用 `src/application/capability.ts`。
-  启用真实模型需显式传入 `build({ config, capability })`，并提供 DeepSeek 密钥和知乎 CLI 路径；
-  仅设置环境变量不会自动切换插件，详见 [插件装配说明](src/capabilities/topics/README.md)。
+  **联调/验收用 `npm run start:ai`**（`src/main-ai.ts`）启动真实插件，需要提供
+  DeepSeek 密钥和知乎 CLI 路径：
+
+  ```powershell
+  $env:DEEPSEEK_API_KEY="..."; $env:ZHIHU_CLI_PATH="..."; npm run start:ai
+  ```
+
+  仅设置环境变量不会自动切换插件，`npm start` 永远用假插件。
 - 演练把恢复期压到 2 秒、限频窗口压到 1.5 秒，否则要等 60 秒才能看到效果。
   生产配置在 `src/config.ts`，未改动。

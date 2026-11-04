@@ -7,6 +7,9 @@ interface MemberCardProps {
   isSelf: boolean
   canRemove?: boolean
   onRemove?: (member: ActiveMember) => void
+  /** 房主点名邀请该成员发言 */
+  canInvite?: boolean
+  onInvite?: (member: ActiveMember) => void
   /** 外部传入的「现在」，让倒计时每秒会走 */
   now?: number
 }
@@ -19,7 +22,15 @@ function countdown(iso: string | null, now: number): string | null {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-export function MemberCard({ member, isSelf, canRemove, onRemove, now = Date.now() }: MemberCardProps) {
+export function MemberCard({
+  member,
+  isSelf,
+  canRemove,
+  onRemove,
+  canInvite,
+  onInvite,
+  now = Date.now(),
+}: MemberCardProps) {
   const color = personColor(member.id)
   const presence = member.membership?.presence ?? 'connecting'
   const offline = presence === 'offline'
@@ -78,14 +89,27 @@ export function MemberCard({ member, isSelf, canRemove, onRemove, now = Date.now
         />
       </span>
 
-      {canRemove && onRemove && (
-        <button
-          type="button"
-          onClick={() => onRemove(member)}
-          className="absolute bottom-2 right-2.5 rounded-full border border-[rgba(177,105,74,.35)] bg-[rgba(255,253,247,.9)] px-2 py-0.5 text-[10.5px] text-brick opacity-0 transition-opacity duration-300 focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          移出
-        </button>
+      {((canInvite && onInvite) || (canRemove && onRemove)) && (
+        <span className="absolute bottom-2 right-2.5 flex gap-1">
+          {canInvite && onInvite && (
+            <button
+              type="button"
+              onClick={() => onInvite(member)}
+              className="rounded-full border border-[rgba(96,166,150,.45)] bg-[rgba(255,253,247,.9)] px-2 py-0.5 text-[10.5px] text-[#3f6156] opacity-0 transition-opacity duration-300 focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              邀请
+            </button>
+          )}
+          {canRemove && onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(member)}
+              className="rounded-full border border-[rgba(177,105,74,.35)] bg-[rgba(255,253,247,.9)] px-2 py-0.5 text-[10.5px] text-brick opacity-0 transition-opacity duration-300 focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              移出
+            </button>
+          )}
+        </span>
       )}
     </div>
   )
