@@ -9,7 +9,7 @@
  *   - 任一失败均回落备用话题池，保证基础聊天不受影响（PRD 第 7 节）
  */
 
-import type { TopicCandidate, ZhihuContentSource } from './types.ts';
+import type { KnowledgeSnippet, TopicCandidate, ZhihuContentSource } from './types.ts';
 import { CapabilityError, isNonBlankText } from './types.ts';
 import { screenHotItems, isIcebreakingTitle } from './screening.ts';
 import { pickFallbackTopics } from './fallback.ts';
@@ -42,6 +42,12 @@ function clip(text: string, max = MAX_CONTENT_LENGTH): string {
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, max)}…`;
 }
+
+/**
+ * 资料摘要的长度上限。回答事实性问题需要比抛话题更多的信息量，
+ * 但三条摘要仍要能塞进一次工具返回，不能让模型上下文被原文淹没。
+ */
+const MAX_KNOWLEDGE_SNIPPET = 180;
 
 export class ZhihuTopicSource {
   readonly #source: ZhihuContentSource;
@@ -203,6 +209,34 @@ export class ZhihuTopicSource {
       this.#searchCache.set(key, { value, expiresAt: this.#now() + this.#searchTtl });
     }
     return this.#select(value, count, excluded, 'search');
+  }
+
+  /**
+   * 检索资料摘要，供模型回答「这本书讲了什么」「这个人是谁」这类事实性问题。
+   *
+   * 与 searchCommonTopics 的区别：不做破冰适宜性筛选、不轮转、不缓存话题候选，
+   * 只把上游前几条原文摘要交给模型。事实性问题需要的是内容本身，不是「能聊的题目」。
+   */
+  async searchKnowledge(
+    keyword: string,
+    options: {
+      readonly limit?: number;
+      readonly signal?: AbortSignal;
+    } = {},
+  ): Promise<readonly KnowledgeSnippet[]> {
+    const normalized = keyword.trim();
+    if (normalized.length === 0) return [];
+    const limit = Math.min(Math.max(options.limit ?? 3, 1), 5);
+    // 多取一倍再截前 limit 条：上游前几条偶尔是目录页/无正文条目，留出过滤余量。
+    const items = await this.#source.searchZhihu(normalized, limit * 2, options.signal);
+    return items
+      .filter((item) => isNonBlankText(item.title) && isNonBlankText(item.contentText))
+      .slice(0, limit)
+      .map((item) => ({
+        title: clip(item.title, 60),
+        snippet: clip(item.contentText, MAX_KNOWLEDGE_SNIPPET),
+        url: item.url,
+      }));
   }
 
   /**

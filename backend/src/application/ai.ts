@@ -1,6 +1,8 @@
 import { isoTime, newId, type Config } from '../config.ts';
 import { AppError, toFailure, type ErrorCode } from '../domain/errors.ts';
 import {
+  AI_SPEAKER_AUTHOR_ID,
+  AI_SPEAKER_NICKNAME,
   activeMembers,
   nextSequence,
   type AIReplyRecord,
@@ -12,7 +14,12 @@ import {
 } from '../domain/room.ts';
 import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
 import type { RoomBus } from './bus.ts';
-import type { Capability, CapabilityContext, CapabilityMemberView } from './capability.ts';
+import type {
+  Capability,
+  CapabilityContext,
+  CapabilityMemberView,
+  CapabilityMessageView,
+} from './capability.ts';
 
 /** HTTP 回执的 AI 部分，对应契约的 AiReceipt。 */
 export type AiReceipt =
@@ -192,7 +199,11 @@ export class AiService {
     try {
       const invocation = this.enqueue({
         source: 'host',
-        purpose: 'reply',
+        // 「帮我找个话题」「还有别的话题吗」不只是闲聊，而是明确的选题请求：
+        // 走 topic 用途才会产出话题草稿、更新当前话题，并在下次换话题时被排除。
+        // 一直按 reply 处理时，模型就算抛了话题也只是普通文本，房间的当前话题不变，
+        // 下一轮又会在同一批兴趣关键词里打转（真实会话里连续三轮都在电影上）。
+        purpose: wantsTopicIntent(input.message.text) ? 'topic' : 'reply',
         callerMemberId: input.member.id,
         invitedMemberId: null,
         triggerMessageId: input.message.id,
@@ -383,6 +394,45 @@ export class AiService {
     }
   }
 
+  /**
+   * 最近的发言上下文，包含 AI 自己已经说完的话。
+   *
+   * 只拼成员消息时模型没有「我上一轮说过什么」的记忆：连问几次「还有别的话题吗」
+   * 会反复给同一类话题，追问同一件事也接不上（真实会话里连续三轮都在聊电影）。
+   * AI 回复按 startedSequence 与成员消息一起排序，取最近 20 条；
+   * 只收 completed 且非空的回复 —— 失败/取消留下的半句话会污染上下文。
+   */
+  private recentSpeakers(): CapabilityMessageView[] {
+    const entries: { readonly sequence: number; readonly message: CapabilityMessageView }[] = [];
+    for (const message of this.room.messages) {
+      entries.push({
+        sequence: message.createdSequence,
+        message: {
+          authorId: message.authorId,
+          nickname: this.room.members.get(message.authorId)?.profile.nickname ?? message.authorId,
+          text: message.text,
+          createdAt: message.createdAt,
+        },
+      });
+    }
+    for (const reply of this.room.replies.values()) {
+      if (reply.status !== 'completed' || !/\S/.test(reply.text)) continue;
+      entries.push({
+        sequence: reply.startedSequence,
+        message: {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: reply.text,
+          createdAt: reply.createdAt,
+        },
+      });
+    }
+    return entries
+      .sort((a, b) => a.sequence - b.sequence)
+      .slice(-20)
+      .map((entry) => entry.message);
+  }
+
   private buildContext(invocation: InvocationRecord, signal: AbortSignal): CapabilityContext {
     const view = (member: MemberRecord): CapabilityMemberView => ({
       memberId: member.id,
@@ -399,12 +449,7 @@ export class AiService {
       caller: caller ? view(caller) : null,
       invitedMember: invited ? view(invited) : null,
       members: activeMembers(this.room).map(view),
-      recentMessages: this.room.messages.slice(-20).map(message => ({
-        authorId: message.authorId,
-        nickname: this.room.members.get(message.authorId)?.profile.nickname ?? message.authorId,
-        text: message.text,
-        createdAt: message.createdAt,
-      })),
+      recentMessages: this.recentSpeakers(),
       currentTopic: this.room.currentTopic === null
         ? null
         : {
@@ -513,4 +558,21 @@ export class AiService {
       this.room.running = null;
     }
   }
+}
+
+/**
+ * 房主这句提及是不是在要话题（而不是问事实或随口聊）。
+ *
+ * 只认「找/换/来/给/推荐 + 话题」和「还有(有没有)…话题」这类明确说法：
+ * - 「帮我找个话题」「还有别的话题吗」「电影之外还有什么话题」→ topic
+ * - 「帮我们聊起来」「《当尼采哭泣》讲了什么」→ reply
+ *
+ * 用 topic 用途处理才会产出话题草稿并更新房间当前话题；一直是 reply 的话，
+ * 模型抛的话题只是普通文本，下一轮换话题时也没有「最近聊过」可排除。
+ */
+const TOPIC_INTENT =
+  /(找|换|来|给|推荐|出)[^。！？\n]{0,8}(话题|方向)|(还有|有没有)[^。！？\n]{0,6}(话题|方向)|聊点别的|没话聊|冷场/;
+
+export function wantsTopicIntent(text: string): boolean {
+  return TOPIC_INTENT.test(text);
 }

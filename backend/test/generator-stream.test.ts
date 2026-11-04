@@ -11,7 +11,7 @@ import { APICallError, RetryError } from 'ai';
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 
 import { DeepSeekTextGenerator } from '../src/infrastructure/model/deepseek-generator.ts';
-import { cleanOutput } from '../src/infrastructure/model/sanitize.ts';
+import { MAX_REPLY_TEXT_LENGTH, cleanOutput } from '../src/infrastructure/model/sanitize.ts';
 import { ZhihuTopicSource } from '../src/infrastructure/zhihu/topic-source.ts';
 import { CapabilityError } from '../src/infrastructure/zhihu/types.ts';
 import type {
@@ -258,8 +258,12 @@ test('P1 超长输出：裁剪后增量仍与最终清洗结果一致，不抛�
     .map((c) => (c.kind === 'text' ? c.delta : ''))
     .join('');
 
-  assert.equal(text, cleanOutput(parts.join('')), '交付文本必须等于最终清洗结果');
-  assert.ok(text.length <= 70, `不应超过硬上限，实际 ${text.length}`);
+  assert.equal(
+    text,
+    cleanOutput(parts.join(''), MAX_REPLY_TEXT_LENGTH),
+    '交付文本必须等于最终清洗结果',
+  );
+  assert.ok(text.length <= MAX_REPLY_TEXT_LENGTH, `不应超过回复硬上限，实际 ${text.length}`);
 });
 
 // ---------- P1：错误事件 ----------
@@ -693,4 +697,132 @@ test('P2 检索后只补一串标点：长度够但无实义字符，仍判未�
     (e: unknown) => e instanceof CapabilityError && e.code === 'AI_PROVIDER_ERROR',
     '纯标点不构成实质正文',
   );
+});
+
+// ---------- 能力扩展：资料检索 ----------
+
+/** 返回一段资料摘要的上游；fail=true 时模拟知乎不可用。 */
+class KnowledgeSource implements ZhihuContentSource {
+  readonly queries: string[] = [];
+  readonly #fail: boolean;
+
+  constructor(fail = false) {
+    this.#fail = fail;
+  }
+
+  async searchZhihu(keyword: string): Promise<readonly ZhihuSearchItem[]> {
+    this.queries.push(keyword);
+    if (this.#fail) throw new CapabilityError('AI_UNAVAILABLE', '知乎接口不可用');
+    return [
+      {
+        title: '当尼采哭泣',
+        contentText: '欧文·亚隆的小说，虚构了尼采与医生布雷尔互相治疗的故事。',
+        url: 'https://z.com/book',
+        authorName: '某人',
+      },
+    ];
+  }
+
+  async getHotList(): Promise<readonly ZhihuHotItem[]> {
+    return [];
+  }
+}
+
+test('能力扩展：reply 问事实时调用资料检索，摘要回喂模型后再产出', async () => {
+  const source = new KnowledgeSource();
+  const prompts: unknown[] = [];
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(source), {
+    modelOverride: mockModelStages(
+      [
+        toolCallChunks('c1', 'search_zhihu_knowledge', { query: '当尼采哭泣', limit: 3 }),
+        textChunks(['《当尼采哭泣》是欧文·亚隆的小说，', '写尼采和布雷尔互相治疗。']),
+      ],
+      0,
+      prompts,
+    ),
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(
+    gen.generate(makeRequest({ prompt: '《当尼采哭泣》讲了什么' })),
+  );
+  const whole = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+  assert.ok(whole.includes('欧文·亚隆'), `回答应基于摘要，实际：${whole}`);
+  assert.deepEqual(source.queries, ['当尼采哭泣'], '应按查询词检索资料');
+  assert.ok(
+    JSON.stringify(prompts[1] ?? '').includes('布雷尔'),
+    '检索到的摘要必须回喂模型，否则模型还是会凭记忆编',
+  );
+  assert.equal(
+    chunks.some((c) => c.kind === 'topic'),
+    false,
+    '普通回复的检索结果不是话题，不应产出草稿',
+  );
+});
+
+test('能力扩展：资料检索只提供给普通回复，选题拿不到这个工具', async () => {
+  const toolNames: string[][] = [];
+  const capture = (): MockLanguageModelV4 => {
+    let call = 0;
+    return new MockLanguageModelV4({
+      doStream: async (options: unknown) => {
+        // SDK v7 把工具作为数组传进来，每项带 name。
+        const tools = (options as { tools?: readonly { name?: string }[] }).tools ?? [];
+        toolNames.push(tools.map((item) => item.name ?? '').sort());
+        call += 1;
+        const chunks = call === 1
+          ? toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 })
+          : textChunks(['你们最近一次说走就走的旅行是去哪？']);
+        return {
+          stream: simulateReadableStream({ chunks: [...chunks], chunkDelayInMs: 0 }) as unknown as ReadableStream,
+        };
+      },
+    });
+  };
+
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: capture(),
+    maxRetries: 0,
+  });
+  await collect(gen.generate(makeRequest({ purpose: 'topic', prompt: null, caller: null })));
+
+  const topicTools = toolNames[0] ?? [];
+  assert.ok(topicTools.includes('search_zhihu_topic'));
+  assert.equal(
+    topicTools.includes('search_zhihu_knowledge'),
+    false,
+    '选题必须走话题工具，否则模型会把百科摘要当话题抛出去',
+  );
+
+  toolNames.length = 0;
+  const replyGen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KnowledgeSource()), {
+    modelOverride: capture(),
+    maxRetries: 0,
+  });
+  await collect(replyGen.generate(makeRequest({ prompt: '《当尼采哭泣》讲了什么' })));
+  const replyTools = toolNames[0] ?? [];
+  assert.ok(
+    replyTools.includes('search_zhihu_knowledge'),
+    '普通回复应能查资料回答事实性问题',
+  );
+});
+
+test('能力扩展：资料检索失败不终止整轮回复', async () => {
+  const gen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KnowledgeSource(true)), {
+    modelOverride: mockModelStages([
+      toolCallChunks('c1', 'search_zhihu_knowledge', { query: '某本冷门书', limit: 3 }),
+      textChunks(['这本我没查到可靠资料，', '不如聊聊你读到它的感受？']),
+    ]),
+    maxRetries: 0,
+  });
+
+  const chunks = await collect(gen.generate(makeRequest({ prompt: '某本冷门书讲了什么' })));
+  const whole = chunks
+    .filter((c) => c.kind === 'text')
+    .map((c) => (c.kind === 'text' ? c.delta : ''))
+    .join('');
+  assert.ok(whole.includes('没查到'), `上游失败时也要说人话，实际：${whole}`);
 });

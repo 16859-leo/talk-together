@@ -9,6 +9,17 @@ export interface Profile {
 
 export type Presence = 'connecting' | 'online' | 'offline';
 
+/**
+ * 房间内 AI 发言人的身份。
+ *
+ * 成员 id 由 `newId()` 生成，不会等于 "ai"，因此可以安全地用 authorId 区分
+ * 「真人说过的话」与「AI 自己说过的话」——生成器靠这一点决定哪些历史只用于
+ * 理解上下文、不参与「复述成员原话」的闸门判断。
+ */
+export const AI_SPEAKER_AUTHOR_ID = 'ai';
+/** AI 在最近发言里的显示名，与前端气泡上的名字保持一致。 */
+export const AI_SPEAKER_NICKNAME = 'AI 导播';
+
 export interface Membership {
   id: string;
   joinedSequence: number;

@@ -158,9 +158,11 @@ test('房主提及走完整流式生命周期并更新话题', async t => {
   assert.equal(completed.data.invocation.status, 'completed');
   assert.equal(completed.data.invocation.replyId, completed.data.reply.id);
 
-  // 普通提及用途为 reply，不改话题；本桩实现对 reply 不产出 topic。
-  assert.equal(completed.data.reply.purpose, 'reply');
-  assert.equal(client.frames.some(frame => frame.type === 'topic.changed'), false);
+  // 「来个话题」是明确的选题请求：按 topic 用途执行，成功后才发布话题。
+  // 以前一律按 reply 处理，模型抛的话题只是普通文本，房间当前话题永远不变。
+  assert.equal(completed.data.reply.purpose, 'topic');
+  const topicChanged = await client.waitFor(frame => frame.type === 'topic.changed', 'topic.changed');
+  assert.equal(topicChanged.data.topic.title, '最近看过的电影');
   client.close();
 });
 

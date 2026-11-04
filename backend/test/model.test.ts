@@ -13,6 +13,7 @@ import {
   SYSTEM_PROMPT,
 } from '../src/infrastructure/model/prompts.ts';
 import type { GenerationRequest, MemberView } from '../src/infrastructure/model/types.ts';
+import { AI_SPEAKER_AUTHOR_ID, AI_SPEAKER_NICKNAME } from '../src/domain/room.ts';
 
 // ---------- 输出清洗（真实缺陷回归） ----------
 
@@ -267,11 +268,69 @@ test('提示词：邀答分支点名目标、带出话题标题且不调用工�
   assert.ok(p.includes('不要调用任何工具'));
 });
 
-test('提示词：reply 分支要求有实质内容', () => {
+test('提示词：reply 分支按房主要求分派任务，不再一律抛话题', () => {
   const caller: MemberView = { memberId: 'a', nickname: '小林', interestTags: [], bio: '' };
-  const p = buildUserPrompt(makeRequest({ purpose: 'reply', caller, prompt: '找个话题' }));
-  assert.ok(p.includes('实质内容'));
+  const p = buildUserPrompt(
+    makeRequest({ purpose: 'reply', caller, prompt: '《当尼采哭泣》讲了什么' }),
+  );
+  assert.ok(p.includes('search_zhihu_knowledge'), '问事实时应引导查资料，而不是凭印象回答');
+  assert.ok(p.includes('不要凭印象编'));
+  assert.ok(p.includes('总结'), '应支持总结聊天');
+  assert.ok(p.includes('活动'), '应支持建议破冰活动');
   assert.ok(p.includes('不要用大段客套'));
+});
+
+test('提示词：最近发言包含 AI 自己的话时会明确标注，避免重复', () => {
+  const caller: MemberView = { memberId: 'a', nickname: '小林', interestTags: [], bio: '' };
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'reply',
+      caller,
+      prompt: '还有别的话题吗',
+      recentMessages: [
+        {
+          authorId: 'a',
+          nickname: '小林',
+          text: '有没有别的话题',
+          createdAt: '2026-11-04T10:00:00.000Z',
+        },
+        {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: '你们最难忘的一次旅行是去哪？',
+          createdAt: '2026-11-04T10:00:05.000Z',
+        },
+      ],
+    }),
+  );
+  assert.ok(p.includes(`${AI_SPEAKER_NICKNAME}: 你们最难忘`), 'AI 历史要作为发言列出');
+  assert.ok(p.includes('你自己之前说的话'), '要显式告诉模型这是它自己说的，否则会重复');
+});
+
+test('提示词：选题分支要求换一个方向，不要复述上一轮', () => {
+  const p = buildUserPrompt(makeRequest({ purpose: 'topic' }));
+  assert.ok(p.includes('换话题要真的换'));
+});
+
+test('提示词：已经聊过话题后，选题改用热榜换领域', () => {
+  const p = buildUserPrompt(
+    makeRequest({
+      purpose: 'topic',
+      recentMessages: [
+        {
+          authorId: AI_SPEAKER_AUTHOR_ID,
+          nickname: AI_SPEAKER_NICKNAME,
+          text: '你们最难忘的一次旅行是去哪？',
+          createdAt: '2026-11-04T10:00:05.000Z',
+        },
+      ],
+    }),
+  );
+  assert.ok(p.includes('get_hot_list'), '换话题时应改用热榜');
+  assert.ok(
+    !p.includes('共同兴趣标签：摄影'),
+    '已聊过话题时不能再围绕同一批兴趣关键词检索，否则会一直在同一类话题里打转',
+  );
 });
 
 test('提示词：reply 分支带上房主正文', () => {
