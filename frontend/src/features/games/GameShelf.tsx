@@ -59,7 +59,7 @@ export function GameShelf({ active, disabled, onStart, onNext, onStop }: GameShe
               onClick={() => onNext(current)}
               className="flex-1 rounded-xl bg-sage-deep px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#549c8b] disabled:opacity-50"
             >
-              {current.id === 'story-relay' ? '下一句' : '下一题'}
+              {current.nextLabel}
             </button>
             <button
               type="button"

@@ -16,6 +16,8 @@ export interface GameDefinition {
   readonly startText: string
   /** 推进到下一轮的发言 */
   readonly nextText: string
+  /** 下一轮按钮上的文案 */
+  readonly nextLabel: string
   /** 收尾发言 */
   readonly stopText: string
 }
@@ -29,6 +31,7 @@ export const GAMES: readonly GameDefinition[] = [
     totalRounds: 5,
     startText: '@AI 来玩默契二选一',
     nextText: '@AI 下一题',
+    nextLabel: '下一题',
     stopText: '@AI 结束游戏',
   },
   {
@@ -39,6 +42,51 @@ export const GAMES: readonly GameDefinition[] = [
     totalRounds: 4,
     startText: '@AI 来玩故事接龙',
     nextText: '@AI 下一句',
+    nextLabel: '下一句',
+    stopText: '@AI 结束游戏',
+  },
+  {
+    id: 'twenty-questions',
+    name: '二十问猜词',
+    emoji: '🔍',
+    tagline: '我只答是或不是，你们猜我藏了什么',
+    totalRounds: 8,
+    startText: '@AI 来玩二十问猜词',
+    nextText: '@AI 下一问',
+    nextLabel: '下一问',
+    stopText: '@AI 结束游戏',
+  },
+  {
+    id: 'what-if',
+    name: '如果…会怎样',
+    emoji: '🌀',
+    tagline: '一个离谱假设，看谁接得最飞',
+    totalRounds: 4,
+    startText: '@AI 来玩如果…会怎样',
+    nextText: '@AI 接着来',
+    nextLabel: '接着来',
+    stopText: '@AI 结束游戏',
+  },
+  {
+    id: 'common-ground',
+    name: '原来我们都一样',
+    emoji: '🤝',
+    tagline: '各说各的，看看谁和谁撞上',
+    totalRounds: 4,
+    startText: '@AI 来玩原来我们都一样',
+    nextText: '@AI 下一轮',
+    nextLabel: '下一轮',
+    stopText: '@AI 结束游戏',
+  },
+  {
+    id: 'three-words',
+    name: '三个词',
+    emoji: '🔤',
+    tagline: '三个不相干的词，拼一句话',
+    totalRounds: 4,
+    startText: '@AI 来玩三个词',
+    nextText: '@AI 下一轮',
+    nextLabel: '下一轮',
     stopText: '@AI 结束游戏',
   },
 ]

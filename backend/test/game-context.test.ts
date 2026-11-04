@@ -110,3 +110,60 @@ test('游戏：房主按钮推进轮次，能力插件拿到带任务的主持�
   await waitUntil(() => capability.contexts.length === 4, '收尾后的普通回复');
   assert.equal(capability.contexts[3]!.game, null);
 });
+
+test('游戏：二十问的暗牌开局抽定，后面每一轮都是同一张', async (t) => {
+  const capability = new RecordingCapability();
+  const app = await build({
+    config: testConfig({ idle: { topicMs: 45_000, invitationMs: 30_000, tickMs: 3_600_000 } }),
+    capability,
+  });
+  t.after(() => app.close());
+
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/v1/rooms',
+    payload: {
+      clientRequestId: uuid(),
+      bootstrapToken: secret(),
+      profile: { nickname: '房主阿哲', interestTags: ['电影'], bio: '' },
+    },
+  });
+  const body = created.json() as any;
+  const roomId = body.data.room.id as string;
+  const credential = body.data.memberCredential as string;
+  const membershipId = body.data.member.membership.id as string;
+  const service = (app as any).roomService;
+  const room = service.authenticate(roomId, credential).room;
+
+  const say = async (text: string) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/rooms/${roomId}/messages`,
+      headers: { authorization: `Bearer ${credential}`, 'x-membership-id': membershipId },
+      payload: { clientRequestId: uuid(), text, mentions: ['ai'] },
+    });
+    assert.equal(response.statusCode, 201, response.body);
+  };
+
+  await say('@AI 来玩二十问猜词');
+  await waitUntil(() => capability.contexts.length === 1, '二十问开局');
+  const secretWord = room.game.secret as string;
+  assert.equal(typeof secretWord, 'string');
+  assert.ok(capability.contexts[0]!.game?.instruction.includes(secretWord), '开局任务要带暗牌');
+
+  await say('@AI 下一问');
+  await waitUntil(() => capability.contexts.length === 2, '二十问第二轮');
+  assert.equal(capability.contexts[1]!.game?.round, 2);
+  assert.equal(room.game.secret, secretWord, '中途不能换暗牌');
+  assert.ok(
+    capability.contexts[1]!.game?.instruction.includes(secretWord),
+    '第二轮任务要继续带同一张暗牌',
+  );
+
+  await say('@AI 结束游戏');
+  await waitUntil(() => capability.contexts.length === 3, '二十问收尾');
+  assert.ok(
+    capability.contexts[2]!.game?.instruction.includes(secretWord),
+    '收尾要公布同一张暗牌',
+  );
+});

@@ -17,6 +17,8 @@ export interface GameHostState {
   readonly phase: GamePhase
   readonly round: number
   readonly totalRounds: number
+  /** 这一局抽到的暗牌（只有「二十问」这类玩法有）；每轮都带给模型，别让它中途换答案。 */
+  readonly secret?: string
 }
 
 export interface GamePlugin {
@@ -28,6 +30,11 @@ export interface GamePlugin {
   readonly totalRounds: number
   /** 房主 @AI 的文本是否在要求开这个游戏。 */
   readonly startPattern: RegExp
+  /**
+   * 需要暗牌的玩法在这里给候选池：开局时随机抽一个，存进房间的这局游戏里，
+   * 之后每一轮的任务都带着它，保证模型不会中途改答案。
+   */
+  readonly secretPool?: readonly string[]
   /** 这一轮要 AI 主持什么，直接作为提示词任务交给模型。 */
   task(state: GameHostState): string
 }

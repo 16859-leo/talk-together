@@ -13,7 +13,7 @@ import {
   type RoomRecord,
 } from '../domain/room.ts';
 import { wireInvocation, wireReply, wireTopic } from '../transport/wire.ts';
-import { detectGameCommand, gameTask, type GameCommand } from '../games/index.ts';
+import { detectGameCommand, gameTask, pickSecret, type GameCommand, type GameHostState } from '../games/index.ts';
 import type { RoomBus } from './bus.ts';
 import type {
   Capability,
@@ -207,7 +207,8 @@ export class AiService {
       // 游戏指令优先于普通提及：房主点「开始/下一题/结束」时，AI 这一轮主持游戏，
       // 而不是把它当成「来找个话题」处理。
       const command = detectGameCommand(input.message.text, this.room.game);
-      const game = command === null ? null : this.buildGameView(command);
+      const prepared = command === null ? null : this.prepareGame(command);
+      const game = prepared?.view ?? null;
       const invocation = this.enqueue({
         source: 'host',
         // 「帮我找个话题」「还有别的话题吗」不只是闲聊，而是明确的选题请求：
@@ -227,7 +228,7 @@ export class AiService {
         game,
       });
       // 受理成功后才推进轮次：排队已满时不能把房间的游戏状态改掉。
-      if (command !== null && game !== null) this.applyGameCommand(command, game);
+      if (command !== null && prepared !== null) this.applyGameCommand(command, prepared);
       return invocation.status === 'running'
         ? { status: 'running', invocationId: invocation.id }
         : { status: 'queued', invocationId: invocation.id };
@@ -236,8 +237,16 @@ export class AiService {
     }
   }
 
-  /** 把「这一步该说什么」整理成给能力插件的游戏任务。 */
-  private buildGameView(command: GameCommand): CapabilityGameView {
+  /**
+   * 把「这一步该说什么」整理成给能力插件的游戏任务。
+   *
+   * 需要暗牌的玩法（二十问）在开局时抽一张，随本轮任务交给模型，整局固定；
+   * 返回的 secret 同时用于写进房间的游戏状态，下一轮继续带同一个。
+   */
+  private prepareGame(command: GameCommand): {
+    readonly view: CapabilityGameView;
+    readonly secret: string | null;
+  } {
     const active = this.room.game;
     const totalRounds = command.game.totalRounds;
     let phase: 'start' | 'round' | 'end';
@@ -252,19 +261,37 @@ export class AiService {
       phase = 'round';
       round = Math.min((active?.round ?? 0) + 1, totalRounds);
     }
-    return {
-      gameId: command.game.id,
-      name: command.game.name,
-      emoji: command.game.emoji,
+
+    const secret = command.action === 'start'
+      ? pickSecret(command.game)
+      : active?.secret ?? null;
+    const state: GameHostState = {
       phase,
       round,
       totalRounds,
-      instruction: gameTask(command.game, { phase, round, totalRounds }),
+      ...(secret === null ? {} : { secret }),
+    };
+
+    return {
+      view: {
+        gameId: command.game.id,
+        name: command.game.name,
+        emoji: command.game.emoji,
+        phase,
+        round,
+        totalRounds,
+        instruction: gameTask(command.game, state),
+      },
+      secret,
     };
   }
 
   /** 轮次推进由应用层负责；模型只负责话术，不决定游戏状态。 */
-  private applyGameCommand(command: GameCommand, game: CapabilityGameView): void {
+  private applyGameCommand(
+    command: GameCommand,
+    prepared: { readonly view: CapabilityGameView; readonly secret: string | null },
+  ): void {
+    const game = prepared.view;
     switch (command.action) {
       case 'start':
         this.room.game = {
@@ -272,6 +299,7 @@ export class AiService {
           round: 1,
           totalRounds: game.totalRounds,
           startedAt: isoTime(),
+          ...(prepared.secret === null ? {} : { secret: prepared.secret }),
         };
         break;
       case 'next':

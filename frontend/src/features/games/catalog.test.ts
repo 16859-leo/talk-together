@@ -17,12 +17,20 @@ function memoryStorage() {
 
 describe('游戏目录', () => {
   it('id 与后端注册表一致，按钮文本能带着游戏名开局', () => {
-    expect(GAMES.map((game) => game.id)).toEqual(['this-or-that', 'story-relay'])
+    expect(GAMES.map((game) => game.id)).toEqual([
+      'this-or-that',
+      'story-relay',
+      'twenty-questions',
+      'what-if',
+      'common-ground',
+      'three-words',
+    ])
     for (const game of GAMES) {
       expect(game.startText).toContain(game.name)
       expect(game.startText).toContain('@AI')
       expect(game.nextText).toContain('@AI')
       expect(game.stopText).toContain('@AI')
+      expect(game.nextLabel.length).toBeGreaterThan(0)
       expect(game.totalRounds).toBeGreaterThan(0)
     }
   })

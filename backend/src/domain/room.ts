@@ -119,6 +119,8 @@ export interface GameSessionRecord {
   round: number;
   totalRounds: number;
   startedAt: string;
+  /** 「二十问」这类玩法开局抽到的暗牌；整局固定，中途不换。 */
+  secret?: string;
 }
 
 export interface RoomRecord {
