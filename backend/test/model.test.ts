@@ -143,8 +143,31 @@ test('清洗：正常短句原样保留', () => {
 // ---------- 质量闸门 ----------
 
 test('闸门：拦截复述成员原话', () => {
-  const recent = [{ text: '我觉得远程办公挺好的，省通勤' }];
-  assert.equal(rejectOutput('小林：我觉得远程办公挺好的，省通勤', recent), 'LOOKS_LIKE_TRANSCRIPT');
+  const recent = [{ text: '我觉得远程办公挺好的，省通勤', nickname: '小林' }];
+  assert.equal(
+    rejectOutput('小林：我觉得远程办公挺好的，省通勤', recent, ['小林']),
+    'LOOKS_LIKE_TRANSCRIPT',
+  );
+});
+
+test('闸门：引导语带冒号不误判为转录（真实缺陷回归）', () => {
+  // AI 说「换个话题：你露营时拍过哪张照片…」被连续三轮判成转录，最后报
+  // 「模型未产出可用文本」。冒号前的短标签不是任何成员昵称，就不该拦。
+  const recent = [{ text: '你还有没有其他话题', nickname: '小帅' }];
+  assert.equal(
+    rejectOutput('换个话题：你露营时拍过哪张最难忘的照片？', recent, ['小帅']),
+    null,
+  );
+  assert.equal(rejectOutput('补充一下：你们露营一般带什么装备？', recent, ['小帅']), null);
+});
+
+test('闸门：冒号前确实是成员昵称才算转录', () => {
+  const recent = [{ text: '我觉得远程办公挺好的，省通勤', nickname: '小林' }];
+  assert.equal(rejectOutput('小帅：换个话题聊聊露营吧', recent, ['小林', '小帅']), 'LOOKS_LIKE_TRANSCRIPT');
+});
+
+test('闸门：没有昵称信息时保持旧的保守判断', () => {
+  assert.equal(rejectOutput('换个话题：你们露营一般带什么装备？', []), 'LOOKS_LIKE_TRANSCRIPT');
 });
 
 test('闸门：拦截不带昵称前缀的复述', () => {

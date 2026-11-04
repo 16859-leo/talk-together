@@ -85,6 +85,8 @@ export class DeepSeekTextGenerator implements TextGenerator {
   }
 
   async *generate(request: GenerationRequest): AsyncIterable<GenerationChunk> {
+    // 转录判定需要「谁在说话」：只有冒号前确实是房间成员的昵称才算复述。
+    const memberNicknames = request.members.map((member) => member.nickname);
     for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
       // 每次重试都从零开始：已选话题、去重指纹、缓冲文本都不能跨次复用。
       const state: SelectionState = { selected: null, pending: null, selectedAtLength: null };
@@ -162,7 +164,7 @@ export class DeepSeekTextGenerator implements TextGenerator {
           }
           // 质量闸门里「转录式复述」「复述成员原话」一旦成立就不会再变：
           // 失败回复会原样保留已广播的文字，所以必须在这里拦住，不能先发再判。
-          const earlyReject = rejectOutput(analysis.text, request.recentMessages);
+          const earlyReject = rejectOutput(analysis.text, request.recentMessages, memberNicknames);
           if (earlyReject === 'LOOKS_LIKE_TRANSCRIPT' || earlyReject === 'ECHOES_USER_MESSAGE') {
             continue;
           }
@@ -182,7 +184,9 @@ export class DeepSeekTextGenerator implements TextGenerator {
 
       const finalText = cleanOutput(raw);
       const rejected =
-        finalText.length === 0 ? 'TOO_SHORT' : rejectOutput(finalText, request.recentMessages);
+        finalText.length === 0
+          ? 'TOO_SHORT'
+          : rejectOutput(finalText, request.recentMessages, memberNicknames);
 
       // 选题成功必须有草稿，且**实际交付的正文**要产生于检索结果之后。
       // 只检查原始字符非空不够：检索后只补了 `**` 或另起一行时，cleanOutput 会
@@ -202,6 +206,24 @@ export class DeepSeekTextGenerator implements TextGenerator {
         postText.length >= MIN_TEXT_LENGTH && /[\p{L}\p{N}]/u.test(postText);
       const topicMissing =
         request.purpose === 'topic' && (state.selected === null || !postUsable);
+
+      // 排查用：模型输出被清洗/闸门拦掉时，事件里只看得到「失败」，
+      // 打开 AI_DEBUG=1 才能看到每一轮原文与拒绝原因（默认不输出）。
+      if (process.env['AI_DEBUG'] === '1') {
+        console.error(
+          '[ai-debug]',
+          JSON.stringify({
+            attempt,
+            purpose: request.purpose,
+            raw,
+            finalText,
+            rejected,
+            topicMissing,
+            emittedLength: emitted.length,
+            topicDraft: state.selected?.title ?? null,
+          }),
+        );
+      }
 
       if (rejected === null && !topicMissing) {
         // 草稿补发：正常路径草稿已在文本循环里先行发出，这里只作防御
