@@ -5,10 +5,16 @@
 ## 装配
 
 默认 `npm start` 与 demo 使用 `createStubCapability()`，不会调用真实模型。
-以下为手动装配示例：需要把真实能力传给 `build`，仅设置环境变量不会自动切换插件。
+联调/验收时用 `npm run start:ai`（`src/main-ai.ts`）把真实能力接进应用层：
+
+```powershell
+$env:DEEPSEEK_API_KEY="..."; $env:ZHIHU_CLI_PATH="..."; npm run start:ai
+```
+
+手工装配时把能力传给 `build`，仅设置环境变量不会自动切换插件：
 
 ```ts
-// backend/src/main.ts 中的真实能力装配
+// backend/src/main-ai.ts 中的真实能力装配
 import { createTopicsCapability } from './capabilities/topics/index.ts';
 
 const capability = createTopicsCapability({
