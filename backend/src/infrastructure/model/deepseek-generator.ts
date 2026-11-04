@@ -400,6 +400,16 @@ export class DeepSeekTextGenerator implements TextGenerator {
       }),
     };
 
+    // 房间里已经聊过话题后，选题只保留热榜：共同兴趣检索会反复命中同一批关键词，
+    // 只在提示词里写「换领域」约束不住（真实联调里模型仍会再检索一次电影）。
+    // 去掉工具是确定性保证，与「工具只返回首条、模型没得选」的思路一致。
+    const hadAiTurn = request.recentMessages.some(
+      (message) => message.authorId === AI_SPEAKER_AUTHOR_ID,
+    );
+    if (request.purpose === 'topic' && hadAiTurn) {
+      delete tools['search_zhihu_topic'];
+    }
+
     // 资料检索只给普通回复用：选题时必须走话题工具，否则模型可能把一条百科摘要
     // 当成话题抛出来，绕过去重、适宜性筛选和「当前话题」排除。
     if (request.purpose === 'reply') {

@@ -765,7 +765,7 @@ test('能力扩展：reply 问事实时调用资料检索，摘要回喂模型�
 
 test('能力扩展：资料检索只提供给普通回复，选题拿不到这个工具', async () => {
   const toolNames: string[][] = [];
-  const capture = (): MockLanguageModelV4 => {
+  const capture = (firstTool: 'search_zhihu_topic' | 'get_hot_list' | 'search_zhihu_knowledge' = 'search_zhihu_topic'): MockLanguageModelV4 => {
     let call = 0;
     return new MockLanguageModelV4({
       doStream: async (options: unknown) => {
@@ -773,8 +773,14 @@ test('能力扩展：资料检索只提供给普通回复，选题拿不到这�
         const tools = (options as { tools?: readonly { name?: string }[] }).tools ?? [];
         toolNames.push(tools.map((item) => item.name ?? '').sort());
         call += 1;
+        const args =
+          firstTool === 'get_hot_list'
+            ? { limit: 3 }
+            : firstTool === 'search_zhihu_knowledge'
+              ? { query: '某本书', limit: 3 }
+              : { keyword: '旅行', count: 5 };
         const chunks = call === 1
-          ? toolCallChunks('c1', 'search_zhihu_topic', { keyword: '旅行', count: 5 })
+          ? toolCallChunks('c1', firstTool, args)
           : textChunks(['你们最近一次说走就走的旅行是去哪？']);
         return {
           stream: simulateReadableStream({ chunks: [...chunks], chunkDelayInMs: 0 }) as unknown as ReadableStream,
@@ -799,7 +805,7 @@ test('能力扩展：资料检索只提供给普通回复，选题拿不到这�
 
   toolNames.length = 0;
   const replyGen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KnowledgeSource()), {
-    modelOverride: capture(),
+    modelOverride: capture('search_zhihu_knowledge'),
     maxRetries: 0,
   });
   await collect(replyGen.generate(makeRequest({ prompt: '《当尼采哭泣》讲了什么' })));
@@ -807,6 +813,36 @@ test('能力扩展：资料检索只提供给普通回复，选题拿不到这�
   assert.ok(
     replyTools.includes('search_zhihu_knowledge'),
     '普通回复应能查资料回答事实性问题',
+  );
+
+  // 已经聊过话题后选题只给热榜：共同兴趣检索会反复命中同一批关键词。
+  toolNames.length = 0;
+  const secondTopicGen = new DeepSeekTextGenerator(new ZhihuTopicSource(new KeywordSource()), {
+    modelOverride: capture('get_hot_list'),
+    maxRetries: 0,
+  });
+  await collect(
+    secondTopicGen.generate(
+      makeRequest({
+        purpose: 'topic',
+        prompt: '还有别的话题吗',
+        caller: { memberId: 'a', nickname: '小林', interestTags: [], bio: '' },
+        recentMessages: [
+          {
+            authorId: 'ai',
+            nickname: 'AI 导播',
+            text: '你们最难忘的一次旅行是去哪？',
+            createdAt: '2026-11-04T10:00:05.000Z',
+          },
+        ],
+      }),
+    ),
+  );
+  const secondTopicTools = toolNames[0] ?? [];
+  assert.deepEqual(
+    secondTopicTools,
+    ['get_hot_list'],
+    '换话题时不能再用共同兴趣检索，否则会一直在同一类话题里打转',
   );
 });
 
