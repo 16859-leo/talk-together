@@ -1,7 +1,23 @@
-import { Link } from 'react-router-dom'
-import { DEMO_INVITE_PATH } from '../state/demo'
+import { useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { parseInviteLink } from '../features/join/inviteLink'
 
 export default function HomePage() {
+  const navigate = useNavigate()
+  const [invite, setInvite] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function join(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const target = parseInviteLink(invite, window.location.origin)
+    if (!target) {
+      setError('链接不完整，让房主重新发一次')
+      return
+    }
+    setError(null)
+    navigate(target)
+  }
+
   return (
     <div className="page-bg paper relative min-h-screen min-h-[100svh] overflow-hidden">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -68,39 +84,45 @@ export default function HomePage() {
                   />
                 </svg>
               </Link>
-
-              <Link
-                to={DEMO_INVITE_PATH}
-                className="group inline-flex h-[54px] w-full items-center justify-center gap-2.5 rounded-[16px] border-[1.5px] border-[rgba(63,111,98,.34)] bg-[rgba(255,253,247,.52)] px-6 text-[15px] font-medium text-[#4a4135] transition-[transform,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-[rgba(63,111,98,.5)] hover:bg-card active:translate-y-0 sm:w-auto sm:min-w-[232px]"
-              >
-                <svg
-                  viewBox="0 0 20 20"
-                  aria-hidden="true"
-                  className="h-[17px] w-[17px] text-[#557268]"
-                >
-                  <path
-                    d="M1.8 10S4.7 4.8 10 4.8 18.2 10 18.2 10 15.3 15.2 10 15.2 1.8 10 1.8 10Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinejoin="round"
-                  />
-                  <circle cx="10" cy="10" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-                用演示房间进去看看
-              </Link>
             </div>
 
-            <p className="hero-enter hero-enter--foot mt-4 text-[12px] text-muted">
-              <Link to="/rooms/room_demo" className="underline decoration-[rgba(63,111,98,.35)] underline-offset-4">
-                或者直接看房间页
-              </Link>
-            </p>
+            <form
+              onSubmit={join}
+              className="hero-enter hero-enter--foot mx-auto mt-7 w-full max-w-[430px] text-left"
+            >
+              <label
+                htmlFor="invite-link"
+                className="flex items-baseline gap-1.5 text-[12.5px] text-muted"
+              >
+                <b className="text-[13px] font-semibold text-ink">已经收到邀请？</b>
+                <span>粘贴房主发你的链接</span>
+              </label>
+              <div className="mt-2 flex items-center gap-2 rounded-[16px] border-[1.5px] border-rule bg-card py-1.5 pl-3.5 pr-1.5 transition-shadow focus-within:border-[rgba(96,166,150,.7)] focus-within:shadow-[0_0_0_4px_rgba(124,185,168,.14)]">
+                <input
+                  id="invite-link"
+                  value={invite}
+                  onChange={(event) => {
+                    setInvite(event.target.value)
+                    if (error) setError(null)
+                  }}
+                  placeholder="http://…/join/room_xxx?inviteCode=…"
+                  className="min-w-0 flex-1 bg-transparent py-1.5 text-[13.5px] text-ink-2 outline-none placeholder:text-faint"
+                />
+                <button
+                  type="submit"
+                  disabled={invite.trim().length === 0}
+                  className="rounded-[12px] bg-sage-deep px-5 py-2 text-[13px] font-semibold text-white shadow-soft transition-colors hover:bg-[#549c8b] disabled:opacity-50"
+                >
+                  加入
+                </button>
+              </div>
+              {error !== null && <p className="mt-1.5 text-[11.5px] text-brick">{error}</p>}
+            </form>
           </div>
         </main>
 
         <footer className="hero-enter hero-enter--foot pb-1 text-center text-[11.5px] leading-relaxed text-ink-2">
-          V0.1 演示 · 后端未接时使用本地快照
+          V0.1 · 邀请制，一桌最多五人
         </footer>
       </div>
     </div>
