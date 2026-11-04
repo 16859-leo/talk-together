@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>搭个话 · 封面</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; }
+      body {
+        font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+        color: #3a3226;
+        background: #f4ead6;
+      }
+      .stage {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(1200px 720px at 12% 8%, rgba(166, 220, 209, 0.95), transparent 62%),
+          radial-gradient(1100px 760px at 88% 18%, rgba(240, 226, 189, 0.98), transparent 60%),
+          radial-gradient(1200px 900px at 50% 118%, rgba(237, 199, 149, 0.95), transparent 62%),
+          linear-gradient(160deg, #f6efdd 0%, #efe0c2 52%, #e9d3ad 100%);
+      }
+      .grain {
+        position: absolute; inset: 0; opacity: 0.32; mix-blend-mode: multiply;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.16'/></svg>");
+      }
+      .blob { position: absolute; border-radius: 50%; filter: blur(2px); opacity: 0.55; }
+      .b1 { width: 520px; height: 520px; left: -140px; bottom: -180px; background: radial-gradient(circle at 40% 40%, #cfe8df, #cfe8df00 70%); }
+      .b2 { width: 720px; height: 720px; right: -220px; top: -260px; background: radial-gradient(circle at 50% 50%, #f8eccd, #f8eccd00 70%); }
+      .b3 { width: 420px; height: 420px; right: 220px; bottom: -160px; background: radial-gradient(circle at 50% 50%, #f0cfa5, #f0cfa500 72%); }
+
+      .frame {
+        position: absolute; inset: 52px; border: 1.5px solid rgba(90, 74, 58, 0.26);
+        border-radius: 40px 52px 42px 58px; pointer-events: none;
+      }
+
+      .brand {
+        position: absolute; left: 132px; top: 112px;
+        display: flex; align-items: center; gap: 18px;
+        font-size: 25px; letter-spacing: 0.16em; color: #4a6b60; font-weight: 600;
+      }
+      .brand i {
+        width: 20px; height: 20px; border-radius: 50%;
+        background: #7cb9a8; box-shadow: 0 0 0 8px rgba(124, 185, 168, 0.18);
+      }
+
+      .title {
+        position: absolute; left: 126px; top: 216px;
+        font-family: "Songti SC", "Noto Serif SC", "SimSun", serif;
+        font-size: 172px; line-height: 1.04; letter-spacing: 0.03em; color: #33291d;
+        font-weight: 700;
+      }
+      .title .thin {
+        display: block; margin-top: 26px;
+        font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-size: 58px; letter-spacing: 0.42em; color: #4b6b60; font-weight: 500;
+        text-transform: lowercase;
+      }
+      .rule {
+        position: absolute; left: 136px; top: 636px; width: 268px; height: 9px;
+        border-radius: 999px; background: rgba(124, 185, 168, 0.55);
+      }
+      .lede {
+        position: absolute; left: 132px; top: 686px; width: 700px;
+        font-size: 29px; line-height: 1.8; color: #5a5044;
+      }
+      .lede b { font-weight: 700; color: #33291d; }
+
+      .pills { position: absolute; left: 132px; top: 848px; display: flex; gap: 16px; }
+      .pill {
+        padding: 13px 26px; border-radius: 999px; font-size: 21px; color: #4a4135;
+        background: rgba(255, 253, 247, 0.72); border: 1.5px solid rgba(139, 115, 85, 0.28);
+      }
+
+      .meta {
+        position: absolute; left: 134px; bottom: 92px; font-size: 20px;
+        letter-spacing: 0.24em; color: #7a6a56;
+      }
+
+      .scene { position: absolute; right: 104px; top: 186px; width: 700px; height: 620px; }
+      .card {
+        position: absolute; border-radius: 24px; padding: 22px 26px;
+        background: rgba(255, 253, 247, 0.93);
+        border: 1.5px solid rgba(139, 115, 85, 0.18);
+        box-shadow: 0 26px 50px -34px rgba(92, 64, 51, 0.55);
+      }
+      .card .who { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+      .card .txt { font-size: 24px; line-height: 1.55; color: #4a4135; }
+      .c1 { left: 0; top: 0; width: 500px; border-left: 8px solid #4f8f82; transform: rotate(-1deg); }
+      .c1 .who { color: #3c6f64; }
+      .c2 { left: 118px; top: 188px; width: 486px; border-left: 8px solid #4e9aa6; transform: rotate(0.7deg); }
+      .c2 .who { color: #3a7781; }
+      .ai {
+        left: 6px; top: 386px; width: 600px; border-radius: 24px 24px 24px 10px;
+        background: rgba(255, 255, 255, 0.97);
+        border: 2px dashed rgba(95, 165, 147, 0.72);
+        transform: rotate(-0.3deg);
+      }
+      .ai .tag {
+        display: inline-block; font-size: 16px; font-weight: 700; letter-spacing: 0.12em;
+        color: #33524a; background: rgba(124, 185, 168, 0.42);
+        border-radius: 999px; padding: 4px 14px; margin-bottom: 10px;
+      }
+      .ai .txt { font-size: 26px; color: #314a43; }
+
+      .members {
+        position: absolute; right: 116px; bottom: 200px;
+        display: flex; align-items: center;
+      }
+      .avatar {
+        width: 78px; height: 78px; border-radius: 52% 48% 45% 55% / 48% 52% 48% 52%;
+        display: grid; place-items: center; font-size: 28px; font-weight: 700; color: #fff;
+        border: 3px solid rgba(255, 253, 247, 0.95); margin-left: -16px;
+        box-shadow: 0 10px 20px -14px rgba(58, 50, 38, 0.7);
+      }
+      .members .avatar:first-child { margin-left: 0; }
+      .note { margin-left: 20px; font-size: 19px; color: #6d5f4d; letter-spacing: 0.05em; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
+      <div class="grain"></div>
+      <div class="frame"></div>
+
+      <div class="brand"><i></i>搭个话 · TalkTogether</div>
+
+      <h1 class="title">
+        搭个话
+        <span class="thin">talk together</span>
+      </h1>
+
+      <div class="rule"></div>
+
+      <p class="lede">
+        五个陌生人，一张桌子。<br />
+        <b>AI 在冷场时接一句</b>，剩下的交给你们。
+      </p>
+
+      <div class="pills">
+        <span class="pill">5 人一桌</span>
+        <span class="pill">无需注册</span>
+        <span class="pill">关房即散</span>
+      </div>
+
+      <div class="meta">V0.1 · 2026</div>
+
+      <div class="scene">
+        <div class="card c1">
+          <div class="who">小林</div>
+          <div class="txt">大家周末一般都干嘛？我最近有点两点一线。</div>
+        </div>
+        <div class="card c2">
+          <div class="who">小周</div>
+          <div class="txt">我一般会出门拍点东西，最近在学扫街。</div>
+        </div>
+        <div class="card ai">
+          <div class="tag">AI 导播</div>
+          <div class="txt">要不要聊聊最近看过的一部好电影？</div>
+        </div>
+      </div>
+
+      <div class="members">
+        <span class="avatar" style="background:#4f8f82">林</span>
+        <span class="avatar" style="background:#4e9aa6">周</span>
+        <span class="avatar" style="background:#b16f84">岚</span>
+        <span class="avatar" style="background:#c07f50">陈</span>
+        <span class="avatar" style="background:#cfa152">米</span>
+        <span class="note">一桌五人 · 人满锁座</span>
+      </div>
+    </div>
+  </body>
+</html>
