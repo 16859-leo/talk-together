@@ -270,3 +270,25 @@ test('房主主动退出即关房，普通成员退出只释放名额', async t 
   });
   assert.equal(hostLeft.data.roomClosed, true);
 });
+
+test('尾斜杠不改变路由语义（客户端 base 多写斜杠也不该 404）', async t => {
+  const h = await harness();
+  t.after(() => h.close());
+
+  // `/api/v1/rooms/` 与 `/api/v1/rooms` 等价；否则前端把 base 写成
+  // http://host/api/v1/ 时会拼出 //rooms，拿到 404 + ROOM_UNAVAILABLE 这种误导性错误。
+  const created = await h.call({
+    method: 'POST',
+    url: '/api/v1/rooms/',
+    body: {
+      clientRequestId: uuid(),
+      bootstrapToken: secret(),
+      profile: { nickname: '斜杠', interestTags: ['摄影'], bio: '' },
+    },
+  });
+  assert.equal(created.status, 201);
+  assert.match(created.data.room.id, /^room_/);
+
+  const config = await h.call({ method: 'GET', url: '/api/v1/client-config/' });
+  assert.equal(config.status, 200);
+});
